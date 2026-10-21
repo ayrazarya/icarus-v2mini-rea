@@ -7,6 +7,7 @@
 mod config;
 mod device;
 mod dpi;
+mod gui;
 mod protocol;
 
 use anyhow::{Context, Result};
@@ -18,19 +19,22 @@ use colored::Colorize;
     name = "icarus-v2mini",
     about = "Native Linux configuration tool for ICARUS V2 MINI gaming mouse",
     version,
-    long_about = "Configure your ICARUS V2 MINI gaming mouse on Linux without Wine.\n\
+    long_about = "Configure your ICARUS V2 MINI gaming mouse on Linux.\n\
                   Supports DPI, polling rate, LED effects, LOD, angle snapping, \n\
                   motion sync, debounce, and button remapping.\n\n\
-                  Reverse-engineered from the Windows configuration software.\n\
+                  Run without arguments to launch the Desktop GUI.\n\
                   Hardware: PAW3395 sensor, NRF52840 MCU."
 )]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Launch the Desktop Graphical User Interface (GUI)
+    Gui,
+
     /// Show device information and current settings
     Info,
 
@@ -175,10 +179,17 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::List => cmd_list(),
-        Commands::UdevRule => cmd_udev_rule(),
+        None | Some(Commands::Gui) => {
+            if let Err(e) = gui::run_gui() {
+                eprintln!("Failed to launch GUI: {}", e);
+                std::process::exit(1);
+            }
+            Ok(())
+        }
+        Some(Commands::List) => cmd_list(),
+        Some(Commands::UdevRule) => cmd_udev_rule(),
         // All other commands need the device connected
-        cmd => {
+        Some(cmd) => {
             let dev = device::IcarusDevice::open()?;
             println!(
                 "{} Connected via {}",
@@ -197,7 +208,7 @@ fn main() -> Result<()> {
                 Commands::Battery => cmd_battery(&dev),
                 Commands::Apply { file } => cmd_apply(&dev, &file),
                 Commands::Save { file } => cmd_save(&dev, &file),
-                _ => unreachable!(),
+                Commands::Gui | Commands::List | Commands::UdevRule => unreachable!(),
             }
         }
     }

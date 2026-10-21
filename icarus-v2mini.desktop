@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=ICARUS V2 MINI
+Comment=Native Gaming Mouse Configuration Software for ICARUS V2 MINI
+Exec=/home/arya/.cargo/bin/icarus-v2mini
+Icon=/home/arya/Code/icarus-v2mini-linux/assets/app-icon.png
+Terminal=false
+Type=Application
+Categories=Settings;HardwareSettings;Utility;
+Keywords=mouse;gaming;dpi;icarus;v2mini;
