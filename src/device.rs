@@ -5,7 +5,9 @@
 
 use crate::config::{Color, DpiLed, LedMode, LiftOffDistance, MouseConfig, PollingRate};
 use crate::dpi;
-use crate::protocol::{Command, PACKET_SIZE, ProtocolError, Response};
+use crate::protocol::{
+    addr, Command, ProtocolError, Response, CMD_READ, CMD_RESPONSE, CMD_WRITE, REPORT_ID,
+};
 use anyhow::{Context, Result, bail};
 use std::time::Duration;
 
@@ -22,9 +24,6 @@ const CONFIG_INTERFACE: i32 = 1;
 
 /// Read timeout in milliseconds
 const READ_TIMEOUT_MS: i32 = 500;
-
-/// Maximum retries for read operations
-const MAX_RETRIES: usize = 3;
 
 /// Represents an open connection to an ICARUS V2 MINI mouse.
 pub struct IcarusDevice {
@@ -71,11 +70,13 @@ impl IcarusDevice {
                                 .set_blocking_mode(true)
                                 .context("Failed to set blocking mode")?;
 
-                            return Ok(IcarusDevice {
+                            let dev = IcarusDevice {
                                 device,
                                 product_id: pid,
                                 connection: connection_name.to_string(),
-                            });
+                            };
+                            let _ = dev.send_pc_driver_status(true);
+                            return Ok(dev);
                         }
                         Err(e) => {
                             eprintln!(
@@ -112,9 +113,18 @@ impl IcarusDevice {
         );
     }
 
-    /// Send a command and receive a response.
-    fn send_command(&self, cmd: &Command) -> Result<Response> {
+    /// Send a command and receive a response matching the expected opcode.
+    pub fn send_command(&self, cmd: &Command) -> Result<Response> {
         let packet = cmd.to_packet();
+        let expected_cmd = cmd.data[1];
+
+        // Drain any stale pending packets to keep the buffer synchronized
+        let mut drain_buf = [0u8; 64];
+        while let Ok(n) = self.device.read_timeout(&mut drain_buf, 5) {
+            if n == 0 {
+                break;
+            }
+        }
 
         // Write the command
         self.device
@@ -122,57 +132,34 @@ impl IcarusDevice {
             .map_err(|e| ProtocolError::Hid(e.to_string()))
             .context("Failed to write HID report")?;
 
-        // Read the response with retries
-        for attempt in 0..MAX_RETRIES {
-            let mut buf = [0u8; PACKET_SIZE];
+        let start = std::time::Instant::now();
+        let timeout = Duration::from_millis(READ_TIMEOUT_MS as u64);
 
-            match self.device.read_timeout(&mut buf, READ_TIMEOUT_MS) {
-                Ok(n) if n >= PACKET_SIZE => {
-                    match Response::from_packet(&buf) {
-                        Ok(resp) if resp.is_read_response() => return Ok(resp),
-                        Ok(_) => {
-                            // Got a response but not the expected type, retry
-                            if attempt < MAX_RETRIES - 1 {
-                                continue;
-                            }
-                        }
-                        Err(e) => {
-                            if attempt < MAX_RETRIES - 1 {
-                                eprintln!("Retrying after error: {}", e);
-                                std::thread::sleep(Duration::from_millis(50));
-                                continue;
-                            }
-                            return Err(e.into());
-                        }
-                    }
-                }
-                Ok(n) if n > 0 => {
-                    // Partial read — try to parse just the report bytes
-                    if n >= 17 {
-                        // We may have received without report ID prefix
-                        match Response::from_bytes(&buf[..17]) {
-                            Ok(resp) if resp.is_read_response() => return Ok(resp),
-                            _ => {
-                                if attempt < MAX_RETRIES - 1 {
-                                    continue;
-                                }
-                            }
+        while start.elapsed() < timeout {
+            let mut buf = [0u8; 64];
+            let remaining_ms = (timeout.saturating_sub(start.elapsed()).as_millis() as i32).max(10);
+            match self.device.read_timeout(&mut buf, remaining_ms) {
+                Ok(n) if n >= 17 => {
+                    if let Ok(resp) = Response::from_packet(&buf[..n])
+                        && resp.data[0] == REPORT_ID
+                    {
+                        let matches = if expected_cmd == CMD_READ {
+                            (resp.data[1] == CMD_READ || resp.data[1] == CMD_RESPONSE)
+                                && resp.data[3] == cmd.data[3]
+                                && resp.data[4] == cmd.data[4]
+                        } else {
+                            resp.data[1] == expected_cmd
+                        };
+                        if matches {
+                            return Ok(resp);
                         }
                     }
+                    // Non-matching packet (e.g. async 0x0A or stale ACK) - continue waiting
                 }
                 Ok(_) => {
-                    // Timeout (0 bytes)
-                    if attempt < MAX_RETRIES - 1 {
-                        std::thread::sleep(Duration::from_millis(50));
-                        continue;
-                    }
+                    std::thread::sleep(Duration::from_millis(5));
                 }
                 Err(e) => {
-                    if attempt < MAX_RETRIES - 1 {
-                        eprintln!("Read error (attempt {}): {}", attempt + 1, e);
-                        std::thread::sleep(Duration::from_millis(100));
-                        continue;
-                    }
                     return Err(ProtocolError::Hid(e.to_string()).into());
                 }
             }
@@ -181,17 +168,39 @@ impl IcarusDevice {
         Err(ProtocolError::Timeout.into())
     }
 
-    /// Send a write command (no response expected for writes).
-    fn send_write(&self, cmd: &Command) -> Result<()> {
+    /// Send a write command and cleanly consume acknowledgment (8ms pacing from HIDUsb.dll).
+    pub fn send_write(&self, cmd: &Command) -> Result<()> {
         let packet = cmd.to_packet();
+        let expected_cmd = cmd.data[1];
+
         self.device
             .write(&packet)
             .map_err(|e| ProtocolError::Hid(e.to_string()))
             .context("Failed to write HID report")?;
 
-        // Small delay after write to let the MCU process
-        std::thread::sleep(Duration::from_millis(20));
+        // Read ACK packet with short timeout so input buffer remains clean
+        let mut ack_buf = [0u8; 64];
+        let start = std::time::Instant::now();
+        let ack_timeout = Duration::from_millis(60);
+
+        while start.elapsed() < ack_timeout {
+            if let Ok(n) = self.device.read_timeout(&mut ack_buf, 20)
+                && n >= 17
+                && ack_buf[0] == REPORT_ID
+                && (ack_buf[1] == expected_cmd || ack_buf[1] == CMD_WRITE)
+            {
+                break;
+            }
+        }
+
+        // 8ms pacing delay between writes matching sub_1000c690 in HIDUsb.dll
+        std::thread::sleep(Duration::from_millis(8));
         Ok(())
+    }
+
+    /// Commit and apply configuration profile to hardware (opcode 0x0F).
+    pub fn commit_config(&self, profile: u8) -> Result<()> {
+        self.send_write(&Command::apply_config(profile))
     }
 
     // ── Read operations ──────────────────────────────────────────────
@@ -210,10 +219,40 @@ impl IcarusDevice {
         Ok(resp.payload().first().copied().unwrap_or(0))
     }
 
-    /// Read battery level (0–100).
+    /// Read battery level percentage (0–100).
     pub fn read_battery_level(&self) -> Result<u8> {
-        let resp = self.send_command(&Command::read_battery())?;
-        Ok(resp.payload().first().copied().unwrap_or(0))
+        if let Ok(resp) = self.send_command(&Command::query_battery()) {
+            let lvl = resp.battery_level();
+            if lvl > 0 && lvl <= 100 {
+                return Ok(lvl);
+            }
+        }
+        if let Ok(resp) = self.send_command(&Command::read(addr::READ_BATTERY.0, addr::READ_BATTERY.1, 1)) {
+            let lvl = resp.payload().first().copied().unwrap_or(0);
+            if lvl > 0 && lvl <= 100 {
+                return Ok(lvl);
+            }
+        }
+        bail!("Battery level not reported yet")
+    }
+
+    /// Read whether the mouse is actively online and connected.
+    pub fn read_device_online(&self) -> Result<bool> {
+        if self.product_id == PID_USB {
+            return Ok(true);
+        }
+        match self.send_command(&Command::query_online()) {
+            Ok(resp) => Ok(resp.is_device_online()),
+            Err(_) => {
+                // If query command drops, assume device is online to avoid false lockouts
+                Ok(true)
+            }
+        }
+    }
+
+    /// Notify MCU that PC Driver is running.
+    pub fn send_pc_driver_status(&self, active: bool) -> Result<()> {
+        self.send_write(&Command::pc_driver_status(active))
     }
 
     /// Read firmware version string.
@@ -314,10 +353,11 @@ impl IcarusDevice {
             bail!("DPI stage must be 0–7, got {}", stage);
         }
         self.send_write(&Command::write_current_dpi(stage))?;
+        let _ = self.commit_config(1);
         Ok(())
     }
 
-    /// Set a DPI value for a specific stage.
+    /// Set a DPI value for a specific stage (0x01, 0x2C + stage * 4).
     pub fn set_dpi_for_stage(&self, stage: u8, dpi_value: u16) -> Result<()> {
         if stage > 7 {
             bail!("DPI stage must be 0–7, got {}", stage);
@@ -327,24 +367,24 @@ impl IcarusDevice {
         let snapped = dpi::snap_dpi(dpi_value);
         let (_, reg) = dpi::encode_dpi(snapped);
 
-        // DPI stage config is at register address:
-        // addr_hi = 0x01, addr_lo = 0x10 + stage
-        // Payload: [x_reg, y_reg] (X and Y use same value for this mouse)
-        let cmd = Command::write(0x01, 0x10 + stage, &[reg, reg]);
+        let cmd = Command::write_dpi_stage(stage, reg, reg);
         self.send_write(&cmd)?;
         Ok(())
     }
 
     /// Set DPI LED configuration.
     pub fn set_dpi_led(&self, led: &DpiLed) -> Result<()> {
-        self.send_write(&Command::write_dpi_led(
+        for cmd in Command::write_dpi_led_commands(
             led.mode.to_code(),
             led.brightness,
             led.breath_speed,
             led.color.r,
             led.color.g,
             led.color.b,
-        ))?;
+        ) {
+            self.send_write(&cmd)?;
+        }
+        let _ = self.commit_config(1);
         Ok(())
     }
 
@@ -413,8 +453,7 @@ impl IcarusDevice {
         if stage > 7 {
             bail!("DPI stage must be 0–7, got {}", stage);
         }
-        // LED bar address: 0x01, 0x20 + stage * 3
-        let cmd = Command::write(0x01, 0x20 + stage * 3, &[color.r, color.g, color.b]);
+        let cmd = Command::write_dpi_stage_color(stage, color.r, color.g, color.b);
         self.send_write(&cmd)?;
         Ok(())
     }
@@ -435,6 +474,28 @@ impl IcarusDevice {
         {
             config.active_dpi_stage = stage;
         }
+
+        // Read all 8 DPI stages and colors from hardware registers
+        for i in 0..config.dpi_stages.len().min(8) {
+            // DPI Stage Value (0x00, 0x0C + i*4, length 4)
+            if let Ok(resp) = self.send_command(&Command::read(0x00, addr::DPI_STAGE_BASE + (i as u8) * 4, 4)) {
+                let p = resp.payload();
+                if let Some(&x_reg) = p.first() {
+                    let dpi_val = dpi::decode_dpi(x_reg);
+                    if (50..=26000).contains(&dpi_val) {
+                        config.dpi_stages[i].dpi = dpi_val;
+                    }
+                }
+            }
+            // DPI Stage Color (0x00, 0x2C + i*4, length 4)
+            if let Ok(resp) = self.send_command(&Command::read(0x00, addr::DPI_COLOR_BASE + (i as u8) * 4, 4)) {
+                let p = resp.payload();
+                if p.len() >= 3 {
+                    config.dpi_stages[i].color = Color::new(p[0], p[1], p[2]);
+                }
+            }
+        }
+
         if let Ok(led) = self.read_dpi_led() {
             config.dpi_led = led;
         }
@@ -469,17 +530,29 @@ impl IcarusDevice {
         let mut cfg = config.clone();
         cfg.validate();
 
+        // 1. Notify MCU that PC Driver is running
+        let _ = self.send_pc_driver_status(true);
+
+        // 2. Set polling rate
         self.set_polling_rate(cfg.polling_rate)?;
+
+        // 3. Set max DPI stages count
+        let enabled_count = cfg.dpi_stages.iter().filter(|s| s.enabled).count().clamp(1, 8) as u8;
+        let _ = self.send_write(&Command::write_max_dpi_stages(enabled_count));
+
+        // 4. Set active DPI stage
         self.set_active_dpi_stage(cfg.active_dpi_stage)?;
 
-        for (i, stage) in cfg.dpi_stages.iter().enumerate() {
-            if stage.enabled {
-                self.set_dpi_for_stage(i as u8, stage.dpi)?;
-                self.set_dpi_stage_color(i as u8, stage.color)?;
-            }
+        // 5. Write all 8 DPI stages values & colors
+        for (i, stage) in cfg.dpi_stages.iter().enumerate().take(8) {
+            self.set_dpi_for_stage(i as u8, stage.dpi)?;
+            self.set_dpi_stage_color(i as u8, stage.color)?;
         }
 
+        // 6. Write composite DPI LED settings
         self.set_dpi_led(&cfg.dpi_led)?;
+
+        // 7. Write sensor parameters
         self.set_lod(cfg.lod)?;
         self.set_performance_mode(cfg.performance_mode)?;
         self.set_angle_snapping(cfg.angle_snapping)?;
@@ -488,9 +561,13 @@ impl IcarusDevice {
         self.set_debounce(cfg.debounce_ms)?;
         self.set_sensor_sleep(cfg.sensor_sleep_seconds)?;
 
+        // 8. Write button mappings
         for (i, btn) in cfg.buttons.iter().enumerate().take(6) {
             self.set_button_mapping(i as u8, btn)?;
         }
+
+        // 9. Commit and apply active configuration profile (opcode 0x0F)
+        self.commit_config(1)?;
 
         Ok(())
     }

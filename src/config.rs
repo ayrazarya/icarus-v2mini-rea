@@ -24,8 +24,8 @@ impl PollingRate {
             PollingRate::Hz250 => 0x04,
             PollingRate::Hz500 => 0x02,
             PollingRate::Hz1000 => 0x01,
-            PollingRate::Hz2000 => 0x00,
-            PollingRate::Hz4000 => 0x10,
+            PollingRate::Hz2000 => 0x10,
+            PollingRate::Hz4000 => 0x20,
         }
     }
 
@@ -36,8 +36,8 @@ impl PollingRate {
             0x04 => Some(PollingRate::Hz250),
             0x02 => Some(PollingRate::Hz500),
             0x01 => Some(PollingRate::Hz1000),
-            0x00 => Some(PollingRate::Hz2000),
-            0x10 => Some(PollingRate::Hz4000),
+            0x10 => Some(PollingRate::Hz2000),
+            0x20 => Some(PollingRate::Hz4000),
             _ => None,
         }
     }
@@ -156,16 +156,16 @@ pub enum LiftOffDistance {
 impl LiftOffDistance {
     pub fn to_code(self) -> u8 {
         match self {
-            LiftOffDistance::Low => 0x00,
-            LiftOffDistance::High => 0x01,
+            LiftOffDistance::Low => 0x01,
+            LiftOffDistance::High => 0x02,
         }
     }
 
     #[allow(dead_code)]
     pub fn from_code(code: u8) -> Option<Self> {
         match code {
-            0x00 => Some(LiftOffDistance::Low),
-            0x01 => Some(LiftOffDistance::High),
+            0x00 | 0x01 => Some(LiftOffDistance::Low),
+            0x02 => Some(LiftOffDistance::High),
             _ => None,
         }
     }
@@ -701,9 +701,11 @@ mod tests {
 
     #[test]
     fn test_config_validation() {
-        let mut cfg = MouseConfig::default();
-        cfg.active_profile = 99; // invalid
-        cfg.debounce_ms = 55; // invalid
+        let mut cfg = MouseConfig {
+            active_profile: 99, // invalid
+            debounce_ms: 55,    // invalid
+            ..Default::default()
+        };
         cfg.buttons.clear(); // empty buttons
         cfg.dpi_stages[cfg.active_dpi_stage as usize].enabled = false; // active stage disabled
         cfg.dpi_led.brightness = 99; // invalid

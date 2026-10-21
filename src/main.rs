@@ -254,6 +254,11 @@ fn cmd_info(dev: &device::IcarusDevice) -> Result<()> {
     println!("\n{}", "ICARUS V2 MINI".bold().cyan());
     println!("{}", "═".repeat(40));
 
+    if let Ok(false) = dev.read_device_online() {
+        println!("  {}", "Status:        Dongle Ready (Mouse Offline / Asleep)".yellow().bold());
+        println!("  {}", "Hint:          Switch mouse to 2.4G or click to wake it up.\n".dimmed());
+    }
+
     match dev.read_polling_rate() {
         Ok(rate) => println!("  Polling Rate:  {}", format!("{}", rate).yellow()),
         Err(e) => println!("  Polling Rate:  {} ({})", "?".red(), e),
