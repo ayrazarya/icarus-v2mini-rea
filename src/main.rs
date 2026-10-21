@@ -319,8 +319,10 @@ fn cmd_rate(dev: &device::IcarusDevice, rate: Option<u16>) -> Result<()> {
                 250 => config::PollingRate::Hz250,
                 500 => config::PollingRate::Hz500,
                 1000 => config::PollingRate::Hz1000,
+                2000 => config::PollingRate::Hz2000,
+                4000 => config::PollingRate::Hz4000,
                 _ => anyhow::bail!(
-                    "Invalid polling rate: {}. Valid values: 125, 250, 500, 1000",
+                    "Invalid polling rate: {}. Valid values: 125, 250, 500, 1000, 2000, 4000",
                     hz
                 ),
             };
@@ -398,7 +400,11 @@ fn cmd_led(dev: &device::IcarusDevice, subcmd: LedCommands) -> Result<()> {
                 "off" | "0" => config::LedMode::Off,
                 "solid" | "on" | "1" => config::LedMode::Solid,
                 "breathing" | "breath" | "2" => config::LedMode::Breathing,
-                _ => anyhow::bail!("Invalid LED mode: '{}'. Use: off, solid, breathing", mode),
+                "neon" | "cycle" | "rainbow" | "3" => config::LedMode::Neon,
+                _ => anyhow::bail!(
+                    "Invalid LED mode: '{}'. Use: off, solid, breathing, neon",
+                    mode
+                ),
             };
             // Read current, modify mode, write back
             let mut led = dev.read_dpi_led()?;
