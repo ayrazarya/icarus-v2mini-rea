@@ -4,11 +4,7 @@
 //! software. Communicates directly with the mouse over HID to configure
 //! DPI, polling rate, LED effects, button mappings, and sensor features.
 
-mod config;
-mod device;
-mod dpi;
-mod gui;
-mod protocol;
+use icarus_v2mini::{config, device, dpi, gui};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -255,8 +251,16 @@ fn cmd_info(dev: &device::IcarusDevice) -> Result<()> {
     println!("{}", "═".repeat(40));
 
     if let Ok(false) = dev.read_device_online() {
-        println!("  {}", "Status:        Dongle Ready (Mouse Offline / Asleep)".yellow().bold());
-        println!("  {}", "Hint:          Switch mouse to 2.4G or click to wake it up.\n".dimmed());
+        println!(
+            "  {}",
+            "Status:        Dongle Ready (Mouse Offline / Asleep)"
+                .yellow()
+                .bold()
+        );
+        println!(
+            "  {}",
+            "Hint:          Switch mouse to 2.4G or click to wake it up.\n".dimmed()
+        );
     }
 
     match dev.read_polling_rate() {

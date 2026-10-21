@@ -853,9 +853,9 @@ impl IcarusApp {
             ("Button 1: Left Click", "Klik Kiri", 0),
             ("Button 2: Right Click", "Klik Kanan", 1),
             ("Button 3: Middle Click (Wheel)", "Klik Roda Tengah", 2),
-            ("Button 4: Backward (Side 1)", "Tombol Samping Belakang", 3),
-            ("Button 5: Forward (Side 2)", "Tombol Samping Depan", 4),
-            ("Button 6: DPI Cycle Button", "Bawah Kaki Mouse (Underside)", 5),
+            ("Button 4: Forward", "Tombol Samping Depan", 3),
+            ("Button 5: Back", "Tombol Samping Belakang", 4),
+            ("Button 6: DPI Cycle Button", "Bawah Mouse (Underside)", 5),
         ];
 
         ui.horizontal(|ui| {
@@ -910,27 +910,48 @@ impl IcarusApp {
                     let w = rect.width();
                     let h = rect.height();
 
-                    // Pin coordinates calibrated to physical button locations on mouse0.png (432x356)
+                    // Pin coordinates calibrated to exact physical button locations matching official driver (mouse0.png)
                     let pin_coords = [
-                        (0, egui::pos2(rect.left() + w * 0.227, rect.top() + h * 0.433)), // 1: Left Click (Depan Kiri)
-                        (1, egui::pos2(rect.left() + w * 0.417, rect.top() + h * 0.416)), // 2: Right Click (Posisi tombol kanan)
-                        (2, egui::pos2(rect.left() + w * 0.326, rect.top() + h * 0.387)), // 3: Middle Wheel (Roda Scroll)
-                        (3, egui::pos2(rect.left() + w * 0.685, rect.top() + h * 0.491)), // 4: Backward Side (Belakang)
-                        (4, egui::pos2(rect.left() + w * 0.586, rect.top() + h * 0.519)), // 5: Forward Side (Depan)
-                        (5, egui::pos2(rect.left() + w * 0.380, rect.top() + h * 0.690)), // 6: DPI Switch (Bawah Kaki Mouse)
+                        (
+                            0,
+                            egui::pos2(rect.left() + w * 0.415, rect.top() + h * 0.435),
+                        ), // 1: Left Click (Depan Kanan/Dekat)
+                        (
+                            1,
+                            egui::pos2(rect.left() + w * 0.230, rect.top() + h * 0.405),
+                        ), // 2: Right Click (Depan Kiri/Jauh)
+                        (
+                            2,
+                            egui::pos2(rect.left() + w * 0.335, rect.top() + h * 0.345),
+                        ), // 3: Middle Wheel (Roda Scroll)
+                        (
+                            3,
+                            egui::pos2(rect.left() + w * 0.610, rect.top() + h * 0.495),
+                        ), // 4: Forward Side (Samping Depan)
+                        (
+                            4,
+                            egui::pos2(rect.left() + w * 0.705, rect.top() + h * 0.470),
+                        ), // 5: Back Side (Samping Belakang)
+                        (
+                            5,
+                            egui::pos2(rect.left() + w * 0.665, rect.top() + h * 0.660),
+                        ), // 6: DPI Switch (Bawah Mouse)
                     ];
 
                     let pointer_pos = ui.input(|i| i.pointer.hover_pos());
 
                     // Register hover and click interactions for pins
                     for (btn_idx, pin_pos) in &pin_coords {
-                        let pin_rect = egui::Rect::from_center_size(*pin_pos, egui::vec2(24.0, 24.0));
+                        let pin_rect =
+                            egui::Rect::from_center_size(*pin_pos, egui::vec2(24.0, 24.0));
                         let pin_interact = ui.interact(
                             pin_rect,
                             ui.id().with(("mouse_pin", *btn_idx)),
                             egui::Sense::click_and_drag(),
                         );
-                        if pin_interact.hovered() || pointer_pos.is_some_and(|p| pin_rect.contains(p)) {
+                        if pin_interact.hovered()
+                            || pointer_pos.is_some_and(|p| pin_rect.contains(p))
+                        {
                             next_hovered = Some(*btn_idx);
                         }
 
@@ -960,38 +981,20 @@ impl IcarusApp {
                                 egui::Color32::WHITE,
                             );
                         } else {
-                            ui.painter().circle_filled(
-                                *pin_pos,
-                                8.5,
-                                egui::Color32::from_rgb(30, 41, 59),
-                            );
+                            // Clean white circular badge matching official driver
+                            ui.painter()
+                                .circle_filled(*pin_pos, 9.5, egui::Color32::WHITE);
                             ui.painter().circle_stroke(
                                 *pin_pos,
-                                8.5,
-                                egui::Stroke::new(1.2_f32, egui::Color32::WHITE),
+                                9.5,
+                                egui::Stroke::new(1.3_f32, egui::Color32::from_rgb(71, 85, 105)),
                             );
                             ui.painter().text(
                                 *pin_pos,
                                 egui::Align2::CENTER_CENTER,
                                 format!("{}", btn_idx + 1),
-                                egui::FontId::proportional(10.0),
-                                egui::Color32::WHITE,
-                            );
-                        }
-
-                        // Label underneath Pin 6 indicating it is on the underside
-                        if *btn_idx == 5 {
-                            let note_pos = egui::pos2(pin_pos.x + 14.0, pin_pos.y);
-                            ui.painter().text(
-                                note_pos,
-                                egui::Align2::LEFT_CENTER,
-                                "Bawah Kaki",
-                                egui::FontId::proportional(10.0),
-                                if is_hl {
-                                    egui::Color32::from_rgb(2, 132, 199)
-                                } else {
-                                    egui::Color32::from_rgb(100, 116, 139)
-                                },
+                                egui::FontId::proportional(10.5),
+                                egui::Color32::from_rgb(15, 23, 42),
                             );
                         }
                     }
@@ -999,9 +1002,11 @@ impl IcarusApp {
                     ui.add_space(4.0);
                     ui.vertical_centered(|ui| {
                         ui.label(
-                            egui::RichText::new("6 Programmable Hardware Buttons (Hover to highlight)")
-                                .size(11.0)
-                                .color(egui::Color32::from_rgb(148, 163, 184)),
+                            egui::RichText::new(
+                                "6 Programmable Hardware Buttons (Hover to highlight)",
+                            )
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(148, 163, 184)),
                         );
                     });
                 });
@@ -1029,11 +1034,9 @@ impl IcarusApp {
                     );
                     ui.add_space(2.0);
                     ui.label(
-                        egui::RichText::new(
-                            "Anti-shake filter prevents double clicks (0 - 20 ms)",
-                        )
-                        .size(11.0)
-                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                        egui::RichText::new("Anti-shake filter prevents double clicks (0 - 20 ms)")
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
                     );
                     ui.add_space(8.0);
 
@@ -1047,8 +1050,11 @@ impl IcarusApp {
 
                         let (badge_r, _) =
                             ui.allocate_exact_size(egui::vec2(52.0, 20.0), egui::Sense::hover());
-                        ui.painter()
-                            .rect_filled(badge_r, 4.0, egui::Color32::from_rgb(224, 242, 254));
+                        ui.painter().rect_filled(
+                            badge_r,
+                            4.0,
+                            egui::Color32::from_rgb(224, 242, 254),
+                        );
                         ui.painter().text(
                             badge_r.center(),
                             egui::Align2::CENTER_CENTER,
@@ -1113,9 +1119,11 @@ impl IcarusApp {
                         .color(egui::Color32::from_rgb(2, 132, 199)),
                 );
                 ui.label(
-                    egui::RichText::new("Configure action bindings for all 6 mouse buttons (1 to 6):")
-                        .size(11.5)
-                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    egui::RichText::new(
+                        "Configure action bindings for all 6 mouse buttons (1 to 6):",
+                    )
+                    .size(11.5)
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
                 ui.add_space(8.0);
 
@@ -1151,8 +1159,8 @@ impl IcarusApp {
 
                         // Row 1: Number Pill + Title + Subnote + Category Badge
                         ui.horizontal(|ui| {
-                            let (p_rect, _) =
-                                ui.allocate_exact_size(egui::vec2(22.0, 18.0), egui::Sense::hover());
+                            let (p_rect, _) = ui
+                                .allocate_exact_size(egui::vec2(22.0, 18.0), egui::Sense::hover());
                             ui.painter().rect_filled(
                                 p_rect,
                                 3.5,
@@ -1184,29 +1192,37 @@ impl IcarusApp {
                                     .color(egui::Color32::from_rgb(148, 163, 184)),
                             );
 
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                let (b_rect, _) =
-                                    ui.allocate_exact_size(egui::vec2(46.0, 16.0), egui::Sense::hover());
-                                ui.painter().rect_filled(
-                                    b_rect,
-                                    3.0,
-                                    egui::Color32::from_rgba_unmultiplied(
-                                        cat_color.r(),
-                                        cat_color.g(),
-                                        cat_color.b(),
-                                        35,
-                                    ),
-                                );
-                                ui.painter()
-                                    .rect_stroke(b_rect, 3.0, egui::Stroke::new(1.0_f32, cat_color));
-                                ui.painter().text(
-                                    b_rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    cat_label,
-                                    egui::FontId::proportional(9.5),
-                                    cat_color,
-                                );
-                            });
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    let (b_rect, _) = ui.allocate_exact_size(
+                                        egui::vec2(46.0, 16.0),
+                                        egui::Sense::hover(),
+                                    );
+                                    ui.painter().rect_filled(
+                                        b_rect,
+                                        3.0,
+                                        egui::Color32::from_rgba_unmultiplied(
+                                            cat_color.r(),
+                                            cat_color.g(),
+                                            cat_color.b(),
+                                            35,
+                                        ),
+                                    );
+                                    ui.painter().rect_stroke(
+                                        b_rect,
+                                        3.0,
+                                        egui::Stroke::new(1.0_f32, cat_color),
+                                    );
+                                    ui.painter().text(
+                                        b_rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        cat_label,
+                                        egui::FontId::proportional(9.5),
+                                        cat_color,
+                                    );
+                                },
+                            );
                         });
 
                         ui.add_space(4.0);
@@ -1216,8 +1232,8 @@ impl IcarusApp {
                             ButtonAction::MouseButton(1) => "Left Click".to_string(),
                             ButtonAction::MouseButton(2) => "Right Click".to_string(),
                             ButtonAction::MouseButton(4) => "Middle Click".to_string(),
-                            ButtonAction::MouseButton(8) => "Backward (Side 1)".to_string(),
-                            ButtonAction::MouseButton(16) => "Forward (Side 2)".to_string(),
+                            ButtonAction::MouseButton(16) => "Forward".to_string(),
+                            ButtonAction::MouseButton(8) => "Back".to_string(),
                             ButtonAction::DpiSwitch => "DPI Switch / Cycle".to_string(),
                             ButtonAction::FireKey { clicks, delay_ms } => {
                                 format!("Fire Key ({}x, {}ms)", clicks, delay_ms)
@@ -1258,8 +1274,8 @@ impl IcarusApp {
                             ButtonAction::MouseButton(1) => 0,
                             ButtonAction::MouseButton(2) => 1,
                             ButtonAction::MouseButton(4) => 2,
-                            ButtonAction::MouseButton(8) => 3,
-                            ButtonAction::MouseButton(16) => 4,
+                            ButtonAction::MouseButton(16) => 3,
+                            ButtonAction::MouseButton(8) => 4,
                             ButtonAction::DpiSwitch => 5,
                             ButtonAction::FireKey { .. } => 6,
                             ButtonAction::Media(_) => 7,
@@ -1273,8 +1289,8 @@ impl IcarusApp {
                             "Left Click",
                             "Right Click",
                             "Middle Click",
-                            "Backward (Side 1)",
-                            "Forward (Side 2)",
+                            "Forward",
+                            "Back",
                             "DPI Switch / Cycle",
                             "Fire Key (Rapid Fire)",
                             "Media (Play / Pause)",
@@ -1298,8 +1314,8 @@ impl IcarusApp {
                                 0 => ButtonAction::MouseButton(1),
                                 1 => ButtonAction::MouseButton(2),
                                 2 => ButtonAction::MouseButton(4),
-                                3 => ButtonAction::MouseButton(8),
-                                4 => ButtonAction::MouseButton(16),
+                                3 => ButtonAction::MouseButton(16),
+                                4 => ButtonAction::MouseButton(8),
                                 5 => ButtonAction::DpiSwitch,
                                 6 => ButtonAction::FireKey {
                                     clicks: 3,
@@ -1335,7 +1351,8 @@ impl IcarusApp {
 
                     let pointer_pos = ui.input(|i| i.pointer.hover_pos());
                     let rect = card_resp.response.rect;
-                    if card_resp.response.hovered() || pointer_pos.is_some_and(|p| rect.contains(p)) {
+                    if card_resp.response.hovered() || pointer_pos.is_some_and(|p| rect.contains(p))
+                    {
                         next_hovered = Some(btn_idx);
                     }
 
@@ -1617,7 +1634,6 @@ impl IcarusApp {
                 );
                 ui.label("Configure up to 5 DPI stages with continuous logarithmic spectrum:");
                 ui.add_space(6.0);
-
 
                 // Continuous Horizontal DPI Spectrum Visualizer Bar
                 let (spec_rect, _spec_resp) =
@@ -1956,7 +1972,8 @@ impl IcarusApp {
 
     fn set_active_lighting_color(&mut self, col: Color) {
         self.config.dpi_led.color = col;
-        let active_idx = (self.config.active_dpi_stage as usize).min(self.config.dpi_stages.len().saturating_sub(1));
+        let active_idx = (self.config.active_dpi_stage as usize)
+            .min(self.config.dpi_stages.len().saturating_sub(1));
         if active_idx < self.config.dpi_stages.len() {
             self.config.dpi_stages[active_idx].color = col;
         }
@@ -1974,7 +1991,10 @@ impl IcarusApp {
         // Banner explaining that mouse lighting indicates active DPI stage
         let banner_frame = egui::Frame::none()
             .fill(egui::Color32::from_rgb(240, 249, 255))
-            .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(186, 230, 253)))
+            .stroke(egui::Stroke::new(
+                1.0_f32,
+                egui::Color32::from_rgb(186, 230, 253),
+            ))
             .rounding(egui::Rounding::same(6.0))
             .inner_margin(egui::Margin::symmetric(10.0, 7.0));
 

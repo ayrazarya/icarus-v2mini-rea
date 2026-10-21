@@ -3,3 +3,7 @@
 *.swp
 *~
 .DS_Store
+
+skills/**
+.cursor/**
+.agent/**

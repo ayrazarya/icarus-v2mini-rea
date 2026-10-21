@@ -6,7 +6,7 @@
 use crate::config::{Color, DpiLed, LedMode, LiftOffDistance, MouseConfig, PollingRate};
 use crate::dpi;
 use crate::protocol::{
-    addr, Command, ProtocolError, Response, CMD_READ, CMD_RESPONSE, CMD_WRITE, REPORT_ID,
+    CMD_READ, CMD_RESPONSE, CMD_WRITE, Command, ProtocolError, REPORT_ID, Response, addr,
 };
 use anyhow::{Context, Result, bail};
 use std::time::Duration;
@@ -227,7 +227,11 @@ impl IcarusDevice {
                 return Ok(lvl);
             }
         }
-        if let Ok(resp) = self.send_command(&Command::read(addr::READ_BATTERY.0, addr::READ_BATTERY.1, 1)) {
+        if let Ok(resp) = self.send_command(&Command::read(
+            addr::READ_BATTERY.0,
+            addr::READ_BATTERY.1,
+            1,
+        )) {
             let lvl = resp.payload().first().copied().unwrap_or(0);
             if lvl > 0 && lvl <= 100 {
                 return Ok(lvl);
@@ -357,7 +361,7 @@ impl IcarusDevice {
         Ok(())
     }
 
-    /// Set a DPI value for a specific stage (0x01, 0x2C + stage * 4).
+    /// Set a DPI value for a specific stage (0x00, 0x0C + stage * 4).
     pub fn set_dpi_for_stage(&self, stage: u8, dpi_value: u16) -> Result<()> {
         if stage > 7 {
             bail!("DPI stage must be 0–7, got {}", stage);
@@ -365,9 +369,9 @@ impl IcarusDevice {
         dpi::validate_dpi(dpi_value).map_err(|e| anyhow::anyhow!(e))?;
 
         let snapped = dpi::snap_dpi(dpi_value);
-        let (_, reg) = dpi::encode_dpi(snapped);
+        let (_, low, flag) = dpi::encode_dpi_10bit(snapped);
 
-        let cmd = Command::write_dpi_stage(stage, reg, reg);
+        let cmd = Command::write_dpi_stage_ext(stage, low, low, flag);
         self.send_write(&cmd)?;
         Ok(())
     }
@@ -478,17 +482,26 @@ impl IcarusDevice {
         // Read all 8 DPI stages and colors from hardware registers
         for i in 0..config.dpi_stages.len().min(8) {
             // DPI Stage Value (0x00, 0x0C + i*4, length 4)
-            if let Ok(resp) = self.send_command(&Command::read(0x00, addr::DPI_STAGE_BASE + (i as u8) * 4, 4)) {
+            if let Ok(resp) = self.send_command(&Command::read(
+                0x00,
+                addr::DPI_STAGE_BASE + (i as u8) * 4,
+                4,
+            )) {
                 let p = resp.payload();
                 if let Some(&x_reg) = p.first() {
-                    let dpi_val = dpi::decode_dpi(x_reg);
-                    if (50..=26000).contains(&dpi_val) {
+                    let flag = p.get(2).copied().unwrap_or(0);
+                    let dpi_val = dpi::decode_dpi_10bit(x_reg, flag);
+                    if (dpi::MIN_DPI..=dpi::MAX_DPI).contains(&dpi_val) {
                         config.dpi_stages[i].dpi = dpi_val;
                     }
                 }
             }
             // DPI Stage Color (0x00, 0x2C + i*4, length 4)
-            if let Ok(resp) = self.send_command(&Command::read(0x00, addr::DPI_COLOR_BASE + (i as u8) * 4, 4)) {
+            if let Ok(resp) = self.send_command(&Command::read(
+                0x00,
+                addr::DPI_COLOR_BASE + (i as u8) * 4,
+                4,
+            )) {
                 let p = resp.payload();
                 if p.len() >= 3 {
                     config.dpi_stages[i].color = Color::new(p[0], p[1], p[2]);
@@ -515,7 +528,8 @@ impl IcarusDevice {
 
         // On ICARUS V2 MINI, the mouse lamp is the DPI indicator.
         // Synchronize active stage color into dpi_led.color.
-        let active_idx = (config.active_dpi_stage as usize).min(config.dpi_stages.len().saturating_sub(1));
+        let active_idx =
+            (config.active_dpi_stage as usize).min(config.dpi_stages.len().saturating_sub(1));
         if let Some(active_stage) = config.dpi_stages.get(active_idx) {
             config.dpi_led.color = active_stage.color;
         }
@@ -558,7 +572,12 @@ impl IcarusDevice {
         self.set_polling_rate(cfg.polling_rate)?;
 
         // 3. Set max DPI stages count
-        let enabled_count = cfg.dpi_stages.iter().filter(|s| s.enabled).count().clamp(1, 8) as u8;
+        let enabled_count = cfg
+            .dpi_stages
+            .iter()
+            .filter(|s| s.enabled)
+            .count()
+            .clamp(1, 8) as u8;
         let _ = self.send_write(&Command::write_max_dpi_stages(enabled_count));
 
         // 4. Set active DPI stage
@@ -572,8 +591,13 @@ impl IcarusDevice {
 
         // 6. Write composite and direct DPI LED settings
         // The mouse LED indicates the active DPI stage, so use active stage color.
-        let active_idx = (cfg.active_dpi_stage as usize).min(cfg.dpi_stages.len().saturating_sub(1));
-        let active_color = cfg.dpi_stages.get(active_idx).map(|s| s.color).unwrap_or(cfg.dpi_led.color);
+        let active_idx =
+            (cfg.active_dpi_stage as usize).min(cfg.dpi_stages.len().saturating_sub(1));
+        let active_color = cfg
+            .dpi_stages
+            .get(active_idx)
+            .map(|s| s.color)
+            .unwrap_or(cfg.dpi_led.color);
 
         for cmd in Command::write_dpi_led_commands(
             cfg.dpi_led.mode.to_code(),

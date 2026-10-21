@@ -9,13 +9,13 @@ ripple_control = false
 motion_sync = true
 debounce_ms = 4
 
-# Button mappings (1: Left, 2: Right, 4: Middle, 8: Back, 16: Forward, "DpiSwitch")
+# Button mappings (1: Left, 2: Right, 3: Middle, 4: Forward, 5: Back, 6: DPI Switch)
 buttons = [
     { MouseButton = 1 },
     { MouseButton = 2 },
     { MouseButton = 4 },
-    { MouseButton = 8 },
     { MouseButton = 16 },
+    { MouseButton = 8 },
     "DpiSwitch",
 ]
 
