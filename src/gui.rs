@@ -1,7 +1,7 @@
 //! Graphical User Interface (GUI) for ICARUS V2 MINI.
 //!
 //! A native Linux desktop configuration tool recreating the original
-//! Windows application with high-performance immediate-mode rendering (egui).
+//! Windows application with all reverse-engineered original icons and graphics.
 
 use crate::config::{ButtonAction, Color, LedMode, LiftOffDistance, MouseConfig, PollingRate};
 use crate::device::IcarusDevice;
@@ -33,6 +33,8 @@ pub struct IcarusApp {
     battery_level: Option<u8>,
     /// Connection status text
     connection_status: String,
+    /// Whether connection is wireless
+    is_wireless: bool,
 }
 
 impl IcarusApp {
@@ -51,6 +53,7 @@ impl IcarusApp {
             firmware_version: "Unknown".into(),
             battery_level: None,
             connection_status: "Disconnected (Offline Mode)".into(),
+            is_wireless: false,
         };
 
         app.refresh_device();
@@ -61,7 +64,7 @@ impl IcarusApp {
     fn apply_theme(ctx: &egui::Context) {
         let mut visuals = egui::Visuals::dark();
 
-        // Dark background tones
+        // Dark background tones matching original software
         visuals.panel_fill = egui::Color32::from_rgb(22, 22, 28);
         visuals.window_fill = egui::Color32::from_rgb(28, 28, 36);
 
@@ -96,7 +99,10 @@ impl IcarusApp {
     fn refresh_device(&mut self) {
         match IcarusDevice::open() {
             Ok(dev) => {
+                let conn_lower = dev.connection.to_lowercase();
+                self.is_wireless = conn_lower.contains("wireless");
                 self.connection_status = format!("Connected ({})", dev.connection);
+
                 if let Ok(fw) = dev.read_firmware_version() {
                     self.firmware_version = fw;
                 }
@@ -113,6 +119,7 @@ impl IcarusApp {
                 self.device = None;
                 self.connection_status = "Disconnected (Offline Mode)".into();
                 self.battery_level = None;
+                self.is_wireless = false;
             }
         }
     }
@@ -156,7 +163,7 @@ impl IcarusApp {
 
 impl eframe::App for IcarusApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Top Header Bar
+        // Top Header Bar featuring original reverse-engineered Logo and Icons
         egui::TopBottomPanel::top("header_panel")
             .frame(
                 egui::Frame::side_top_panel(&ctx.style())
@@ -165,43 +172,82 @@ impl eframe::App for IcarusApp {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    // Logo & App Name
+                    // Original ICARUS Logo Image
+                    ui.add(
+                        egui::Image::new(egui::include_image!("../assets/Dialog/Logo.png"))
+                            .max_width(28.0)
+                            .max_height(28.0),
+                    );
+
+                    ui.add_space(8.0);
+
+                    // App Title
                     ui.label(
-                        egui::RichText::new("✦ ICARUS V2 MINI")
+                        egui::RichText::new("ICARUS V2 MINI")
                             .size(20.0)
                             .strong()
                             .color(egui::Color32::from_rgb(0, 210, 255)),
                     );
 
                     ui.label(
-                        egui::RichText::new("NATIVE LINUX DRIVER")
-                            .size(11.0)
+                        egui::RichText::new("NATIVE LINUX CONFIGURATION")
+                            .size(10.0)
                             .color(egui::Color32::from_rgb(120, 120, 140)),
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Connection badge
-                        let (badge_color, badge_text) = if self.device.is_some() {
-                            (
-                                egui::Color32::from_rgb(46, 204, 113),
-                                format!("● {}", self.connection_status),
-                            )
+                        // Connection Icon & Badge
+                        let is_connected = self.device.is_some();
+
+                        if is_connected {
+                            if self.is_wireless {
+                                ui.add(
+                                    egui::Image::new(egui::include_image!(
+                                        "../assets/DialogChange/OnLineWifi.png"
+                                    ))
+                                    .max_height(18.0),
+                                );
+                            } else {
+                                ui.add(
+                                    egui::Image::new(egui::include_image!(
+                                        "../assets/DialogChange/OnLineUsb.png"
+                                    ))
+                                    .max_height(18.0),
+                                );
+                            }
+
+                            ui.label(
+                                egui::RichText::new(&self.connection_status)
+                                    .size(12.0)
+                                    .color(egui::Color32::from_rgb(46, 204, 113))
+                                    .strong(),
+                            );
                         } else {
-                            (
-                                egui::Color32::from_rgb(231, 76, 60),
-                                format!("○ {}", self.connection_status),
-                            )
-                        };
+                            ui.add(
+                                egui::Image::new(egui::include_image!(
+                                    "../assets/DialogChange/DisOnline.png"
+                                ))
+                                .max_height(18.0),
+                            );
 
-                        ui.label(
-                            egui::RichText::new(badge_text)
-                                .size(13.0)
-                                .color(badge_color)
-                                .strong(),
-                        );
+                            ui.label(
+                                egui::RichText::new(&self.connection_status)
+                                    .size(12.0)
+                                    .color(egui::Color32::from_rgb(231, 76, 60))
+                                    .strong(),
+                            );
+                        }
 
-                        // Battery status if wireless
+                        // Original Battery icon & percentage if wireless
                         if let Some(battery) = self.battery_level {
+                            ui.separator();
+                            ui.add(
+                                egui::Image::new(egui::include_image!(
+                                    "../assets/Dialog/Battery.png"
+                                ))
+                                .max_height(16.0),
+                            );
+
                             let battery_color = if battery > 50 {
                                 egui::Color32::from_rgb(46, 204, 113)
                             } else if battery > 20 {
@@ -209,13 +255,16 @@ impl eframe::App for IcarusApp {
                             } else {
                                 egui::Color32::from_rgb(231, 76, 60)
                             };
+
                             ui.label(
-                                egui::RichText::new(format!("🔋 {}%", battery))
-                                    .size(13.0)
-                                    .color(battery_color),
+                                egui::RichText::new(format!("{}%", battery))
+                                    .size(12.0)
+                                    .color(battery_color)
+                                    .strong(),
                             );
-                            ui.separator();
                         }
+
+                        ui.separator();
 
                         // Reconnect button
                         if ui.button("🔄 Scan").clicked() {
@@ -226,42 +275,73 @@ impl eframe::App for IcarusApp {
 
                 ui.add_space(10.0);
 
-                // Tab Navigation Buttons
+                // Tab Navigation with Original Reverse-Engineered Tab Icons
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(8.0, 0.0);
 
-                    let tabs = [
-                        (Tab::Buttons, "🖱  Buttons"),
-                        (Tab::Sensor, "🎯  DPI & Sensor"),
-                        (Tab::Lighting, "💡  Lighting"),
-                        (Tab::Settings, "⚙  Profiles & Settings"),
-                    ];
+                    let tabs = [Tab::Buttons, Tab::Sensor, Tab::Lighting, Tab::Settings];
 
-                    for (tab, title) in tabs {
+                    for tab in tabs {
                         let is_active = self.active_tab == tab;
-                        let text =
-                            egui::RichText::new(title)
-                                .size(14.0)
-                                .strong()
-                                .color(if is_active {
-                                    egui::Color32::from_rgb(0, 210, 255)
-                                } else {
-                                    egui::Color32::from_rgb(180, 180, 200)
-                                });
 
-                        let btn = egui::Button::new(text)
-                            .fill(if is_active {
-                                egui::Color32::from_rgb(32, 42, 60)
+                        let (icon_image, label_text) = match (tab, is_active) {
+                            (Tab::Buttons, true) => (
+                                egui::include_image!("../assets/Dialog/HomeChecked.png"),
+                                "Buttons",
+                            ),
+                            (Tab::Buttons, false) => {
+                                (egui::include_image!("../assets/Dialog/Home.png"), "Buttons")
+                            }
+                            (Tab::Sensor, true) => (
+                                egui::include_image!("../assets/Dialog/SensorChecked.png"),
+                                "DPI & Sensor",
+                            ),
+                            (Tab::Sensor, false) => (
+                                egui::include_image!("../assets/Dialog/Sensor.png"),
+                                "DPI & Sensor",
+                            ),
+                            (Tab::Lighting, true) => (
+                                egui::include_image!("../assets/Dialog/LightChecked.png"),
+                                "Lighting",
+                            ),
+                            (Tab::Lighting, false) => (
+                                egui::include_image!("../assets/Dialog/Light.png"),
+                                "Lighting",
+                            ),
+                            (Tab::Settings, true) => (
+                                egui::include_image!("../assets/Dialog/SettingClick.png"),
+                                "Settings",
+                            ),
+                            (Tab::Settings, false) => (
+                                egui::include_image!("../assets/Dialog/Setting.png"),
+                                "Settings",
+                            ),
+                        };
+
+                        let text = egui::RichText::new(label_text).size(13.0).strong().color(
+                            if is_active {
+                                egui::Color32::from_rgb(0, 210, 255)
                             } else {
-                                egui::Color32::from_rgb(26, 26, 34)
-                            })
-                            .stroke(if is_active {
-                                egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(0, 180, 240))
-                            } else {
-                                egui::Stroke::NONE
-                            })
-                            .rounding(egui::Rounding::same(6.0))
-                            .min_size(egui::vec2(140.0, 36.0));
+                                egui::Color32::from_rgb(180, 180, 200)
+                            },
+                        );
+
+                        let btn = egui::Button::image_and_text(
+                            egui::Image::new(icon_image).max_height(18.0),
+                            text,
+                        )
+                        .fill(if is_active {
+                            egui::Color32::from_rgb(32, 42, 60)
+                        } else {
+                            egui::Color32::from_rgb(26, 26, 34)
+                        })
+                        .stroke(if is_active {
+                            egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(0, 180, 240))
+                        } else {
+                            egui::Stroke::NONE
+                        })
+                        .rounding(egui::Rounding::same(6.0))
+                        .min_size(egui::vec2(145.0, 36.0));
 
                         if ui.add(btn).clicked() {
                             self.active_tab = tab;
@@ -270,7 +350,7 @@ impl eframe::App for IcarusApp {
                 });
             });
 
-        // Bottom Action Footer Bar
+        // Bottom Action Footer Bar with Original Reset Image
         egui::TopBottomPanel::bottom("footer_panel")
             .frame(
                 egui::Frame::side_top_panel(&ctx.style())
@@ -317,13 +397,16 @@ impl eframe::App for IcarusApp {
                             self.read_from_device();
                         }
 
-                        // Reset defaults button
-                        let reset_btn = egui::Button::new("↺ Defaults")
-                            .fill(egui::Color32::from_rgb(34, 34, 44))
-                            .rounding(egui::Rounding::same(6.0))
-                            .min_size(egui::vec2(90.0, 36.0));
+                        // Reset button displaying the original Reset graphic
+                        let reset_img = egui::include_image!("../assets/Buttoninterface/Reset.png");
+                        let reset_btn =
+                            egui::ImageButton::new(egui::Image::new(reset_img).max_height(26.0));
 
-                        if ui.add(reset_btn).clicked() {
+                        if ui
+                            .add(reset_btn)
+                            .on_hover_text("Reset to factory defaults")
+                            .clicked()
+                        {
                             self.config = MouseConfig::default();
                             self.set_status(
                                 "Reset to factory defaults (click Apply to save)",
@@ -351,7 +434,7 @@ impl eframe::App for IcarusApp {
 }
 
 impl IcarusApp {
-    /// Render Tab 1: Button Mapping with embedded mouse visual
+    /// Render Tab 1: Button Mapping with embedded mouse visual & original number badges
     fn render_buttons_tab(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             // Left Column: Visual Mouse Graphic
@@ -361,7 +444,7 @@ impl IcarusApp {
                     ui.set_min_size(egui::vec2(420.0, 380.0));
                     ui.vertical_centered(|ui| {
                         ui.add_space(10.0);
-                        // Display the embedded mouse graphic
+                        // Display the embedded mouse graphic from reverse engineering
                         ui.add(
                             egui::Image::new(egui::include_image!(
                                 "../assets/Buttoninterface/mouse0.png"
@@ -404,7 +487,7 @@ impl IcarusApp {
                         ui.horizontal(|ui| {
                             // Number badge
                             ui.label(
-                                egui::RichText::new(format!(" {}", idx + 1))
+                                egui::RichText::new(format!(" {} ", idx + 1))
                                     .size(13.0)
                                     .strong()
                                     .background_color(egui::Color32::from_rgb(0, 140, 220))
@@ -487,10 +570,13 @@ impl IcarusApp {
 
                 // Polling Rate Card
                 ui.group(|ui| {
-                    ui.heading(
-                        egui::RichText::new("Polling Rate")
-                            .color(egui::Color32::from_rgb(0, 210, 255)),
-                    );
+                    ui.horizontal(|ui| {
+                        ui.heading(
+                            egui::RichText::new("Polling Rate")
+                                .color(egui::Color32::from_rgb(0, 210, 255)),
+                        );
+                    });
+
                     ui.label("USB report frequency:");
                     ui.add_space(10.0);
 
@@ -709,7 +795,7 @@ impl IcarusApp {
         });
     }
 
-    /// Render Tab 3: Lighting and LED Effects
+    /// Render Tab 3: Lighting and LED Effects with original ColorBoard graphic
     fn render_lighting_tab(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
@@ -786,7 +872,7 @@ impl IcarusApp {
 
             ui.add_space(20.0);
 
-            // Right Column: Color Swatches & Custom RGB
+            // Right Column: Color Swatches with Original ColorBoard Graphic & Custom RGB
             ui.vertical(|ui| {
                 ui.group(|ui| {
                     ui.set_width(380.0);
@@ -794,8 +880,18 @@ impl IcarusApp {
                         egui::RichText::new("LED Color")
                             .color(egui::Color32::from_rgb(0, 210, 255)),
                     );
+
+                    ui.add_space(6.0);
+
+                    // Display the reverse-engineered ColorBoard visual banner
+                    ui.add(
+                        egui::Image::new(egui::include_image!("../assets/Light/ColorBoard.png"))
+                            .max_width(340.0),
+                    );
+
+                    ui.add_space(8.0);
                     ui.label("Select from preset colors or customize RGB:");
-                    ui.add_space(10.0);
+                    ui.add_space(8.0);
 
                     // Preset Color Swatches
                     let presets = [
@@ -1002,8 +1098,8 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f510", MODE="0666"
 pub fn run_gui() -> Result<(), eframe::Error> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([920.0, 620.0])
-            .with_min_inner_size([860.0, 560.0])
+            .with_inner_size([940.0, 640.0])
+            .with_min_inner_size([880.0, 580.0])
             .with_title("ICARUS V2 MINI — Mouse Configuration"),
         ..Default::default()
     };
