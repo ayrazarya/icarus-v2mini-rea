@@ -499,6 +499,27 @@ impl IcarusDevice {
         if let Ok(led) = self.read_dpi_led() {
             config.dpi_led = led;
         }
+
+        // Also check direct DPI LED registers (0x00, 0x4C, len 8)
+        if let Ok(resp) = self.send_command(&Command::read(0x00, addr::DPI_LED_MODE.0, 8)) {
+            let p = resp.payload();
+            if p.len() >= 6 {
+                if let Some(mode) = LedMode::from_code(p[0]) {
+                    config.dpi_led.mode = mode;
+                }
+                let scaled_bright = ((p[2] as u16 * 10 + 127) / 255).clamp(1, 10) as u8;
+                config.dpi_led.brightness = scaled_bright;
+                config.dpi_led.breath_speed = p[4].clamp(1, 10);
+            }
+        }
+
+        // On ICARUS V2 MINI, the mouse lamp is the DPI indicator.
+        // Synchronize active stage color into dpi_led.color.
+        let active_idx = (config.active_dpi_stage as usize).min(config.dpi_stages.len().saturating_sub(1));
+        if let Some(active_stage) = config.dpi_stages.get(active_idx) {
+            config.dpi_led.color = active_stage.color;
+        }
+
         if let Ok(lod) = self.read_lod() {
             config.lod = lod;
         }
@@ -549,8 +570,21 @@ impl IcarusDevice {
             self.set_dpi_stage_color(i as u8, stage.color)?;
         }
 
-        // 6. Write composite DPI LED settings
-        self.set_dpi_led(&cfg.dpi_led)?;
+        // 6. Write composite and direct DPI LED settings
+        // The mouse LED indicates the active DPI stage, so use active stage color.
+        let active_idx = (cfg.active_dpi_stage as usize).min(cfg.dpi_stages.len().saturating_sub(1));
+        let active_color = cfg.dpi_stages.get(active_idx).map(|s| s.color).unwrap_or(cfg.dpi_led.color);
+
+        for cmd in Command::write_dpi_led_commands(
+            cfg.dpi_led.mode.to_code(),
+            cfg.dpi_led.brightness,
+            cfg.dpi_led.breath_speed,
+            active_color.r,
+            active_color.g,
+            active_color.b,
+        ) {
+            self.send_write(&cmd)?;
+        }
 
         // 7. Write sensor parameters
         self.set_lod(cfg.lod)?;

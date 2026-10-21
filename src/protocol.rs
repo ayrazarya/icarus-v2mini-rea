@@ -33,6 +33,10 @@ pub mod addr {
     pub const LOD: (u8, u8) = (0x00, 0x0A);
     pub const DPI_STAGE_BASE: u8 = 0x0C; // 0x0C + stage * 4, length 4: [x_reg, y_reg, 0x00, chk]
     pub const DPI_COLOR_BASE: u8 = 0x2C; // 0x2C + stage * 4, length 4: [r, g, b, chk]
+    pub const DPI_LED_MODE: (u8, u8) = (0x00, 0x4C); // length 2: [mode, chk]
+    pub const DPI_LED_BRIGHTNESS: (u8, u8) = (0x00, 0x4E); // length 2: [bright, chk]
+    pub const DPI_LED_SPEED: (u8, u8) = (0x00, 0x50); // length 2: [speed, chk]
+    pub const DPI_LED_PARAM4: (u8, u8) = (0x00, 0x52); // length 2: [p4, chk]
     pub const BUTTON_BASE: u8 = 0x60;    // 0x60 + idx * 4, length 4: [b0, b1, b2, chk]
     pub const DPI_LED_COMPOSITE: (u8, u8) = (0x00, 0xA0); // length 7: [mode, bright, speed, r, g, b, chk]
     pub const DEBOUNCE: (u8, u8) = (0x00, 0xA9);
@@ -359,7 +363,28 @@ impl Command {
         Self { data }
     }
 
-    /// Write DPI LED settings as composite packet.
+    /// Write DPI LED mode register (0x00, 0x4C).
+    pub fn write_dpi_led_mode(mode: u8) -> Self {
+        Self::write_byte(addr::DPI_LED_MODE.0, addr::DPI_LED_MODE.1, mode)
+    }
+
+    /// Write DPI LED brightness register (0x00, 0x4E).
+    pub fn write_dpi_led_brightness(brightness: u8) -> Self {
+        Self::write_byte(addr::DPI_LED_BRIGHTNESS.0, addr::DPI_LED_BRIGHTNESS.1, brightness)
+    }
+
+    /// Write DPI LED breath speed register (0x00, 0x50).
+    pub fn write_dpi_led_speed(speed: u8) -> Self {
+        Self::write_byte(addr::DPI_LED_SPEED.0, addr::DPI_LED_SPEED.1, speed)
+    }
+
+    /// Write DPI LED param4 register (0x00, 0x52).
+    pub fn write_dpi_led_param4(val: u8) -> Self {
+        Self::write_byte(addr::DPI_LED_PARAM4.0, addr::DPI_LED_PARAM4.1, val)
+    }
+
+    /// Write full DPI LED settings matching HIDUsb.dll / Compx protocol.
+    /// Writes direct registers (0x4C, 0x4E, 0x50, 0x52) and composite register (0xA0).
     pub fn write_dpi_led_commands(
         mode: u8,
         brightness: u8,
@@ -368,7 +393,12 @@ impl Command {
         g: u8,
         b: u8,
     ) -> Vec<Self> {
+        let bright_byte = (brightness as u16 * 255 / 10).min(255) as u8;
         vec![
+            Self::write_dpi_led_mode(mode),
+            Self::write_dpi_led_brightness(bright_byte),
+            Self::write_dpi_led_speed(breath_speed),
+            Self::write_dpi_led_param4(0x01),
             Self::write_dpi_led_composite(mode, brightness, breath_speed, r, g, b),
         ]
     }

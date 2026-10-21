@@ -1618,13 +1618,6 @@ impl IcarusApp {
                 ui.label("Configure up to 5 DPI stages with continuous logarithmic spectrum:");
                 ui.add_space(6.0);
 
-                let default_colors = [
-                    egui::Color32::from_rgb(255, 60, 60),   // Stage 1: Red
-                    egui::Color32::from_rgb(0, 230, 230),   // Stage 2: Cyan
-                    egui::Color32::from_rgb(60, 240, 80),   // Stage 3: Green
-                    egui::Color32::from_rgb(255, 255, 255), // Stage 4: White
-                    egui::Color32::from_rgb(255, 230, 40),  // Stage 5: Yellow
-                ];
 
                 // Continuous Horizontal DPI Spectrum Visualizer Bar
                 let (spec_rect, _spec_resp) =
@@ -1692,10 +1685,7 @@ impl IcarusApp {
                     }
                     let sx = dpi_to_x(s.dpi);
                     let pt = egui::pos2(sx, rail_y);
-                    let scol = default_colors
-                        .get(s_idx)
-                        .copied()
-                        .unwrap_or(egui::Color32::WHITE);
+                    let scol = egui::Color32::from_rgb(s.color.r, s.color.g, s.color.b);
                     let is_active = self.config.active_dpi_stage == s_idx as u8;
 
                     if is_active {
@@ -1745,10 +1735,6 @@ impl IcarusApp {
                 for i in 0..self.config.dpi_stages.len() {
                     let is_active_stage = self.config.active_dpi_stage == i as u8;
                     let is_enabled = self.config.dpi_stages[i].enabled;
-                    let stage_color = default_colors
-                        .get(i)
-                        .copied()
-                        .unwrap_or(egui::Color32::WHITE);
 
                     let frame = egui::Frame::none()
                         .fill(if is_active_stage {
@@ -1775,20 +1761,28 @@ impl IcarusApp {
                             if ui.radio(is_active_stage, "").clicked() {
                                 self.config.active_dpi_stage = i as u8;
                                 self.config.dpi_stages[i].enabled = true;
+                                self.config.dpi_led.color = self.config.dpi_stages[i].color;
                             }
 
-                            // Distinct circular color chip with dark outline
-                            let (chip_rect, _) = ui
-                                .allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
-                            ui.painter()
-                                .circle_filled(chip_rect.center(), 7.0, stage_color);
-                            ui.painter().circle_stroke(
-                                chip_rect.center(),
-                                7.0,
-                                egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(148, 163, 184)),
-                            );
+                            // Interactive Color Picker for this DPI stage
+                            let mut rgb = [
+                                self.config.dpi_stages[i].color.r,
+                                self.config.dpi_stages[i].color.g,
+                                self.config.dpi_stages[i].color.b,
+                            ];
+                            if ui
+                                .color_edit_button_srgb(&mut rgb)
+                                .on_hover_text("Click to customize LED color for this DPI stage")
+                                .changed()
+                            {
+                                let new_col = Color::new(rgb[0], rgb[1], rgb[2]);
+                                self.config.dpi_stages[i].color = new_col;
+                                if is_active_stage {
+                                    self.config.dpi_led.color = new_col;
+                                }
+                            }
 
-                            ui.add_space(4.0);
+                            ui.add_space(2.0);
 
                             ui.label(
                                 egui::RichText::new(format!("Stage {}", i + 1))
@@ -1960,6 +1954,14 @@ impl IcarusApp {
         });
     }
 
+    fn set_active_lighting_color(&mut self, col: Color) {
+        self.config.dpi_led.color = col;
+        let active_idx = (self.config.active_dpi_stage as usize).min(self.config.dpi_stages.len().saturating_sub(1));
+        if active_idx < self.config.dpi_stages.len() {
+            self.config.dpi_stages[active_idx].color = col;
+        }
+    }
+
     /// Render Tab 3: Lighting, Live Animated LED Illumination Preview, 6 Esports Presets & 14 Color Chips
     fn render_lighting_tab(&mut self, ui: &mut egui::Ui) {
         // Request repaint if animated mode is running
@@ -1968,6 +1970,53 @@ impl IcarusApp {
         {
             ui.ctx().request_repaint();
         }
+
+        // Banner explaining that mouse lighting indicates active DPI stage
+        let banner_frame = egui::Frame::none()
+            .fill(egui::Color32::from_rgb(240, 249, 255))
+            .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(186, 230, 253)))
+            .rounding(egui::Rounding::same(6.0))
+            .inner_margin(egui::Margin::symmetric(10.0, 7.0));
+
+        banner_frame.show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("💡 DPI Indicator Lamp:")
+                        .strong()
+                        .color(egui::Color32::from_rgb(2, 132, 199)),
+                );
+                ui.label(
+                    egui::RichText::new(
+                        "On ICARUS V2 MINI, the mouse LED reflects the active DPI stage. Choosing a color assigns it to the active stage.",
+                    )
+                    .size(11.5)
+                    .color(egui::Color32::from_rgb(51, 65, 85)),
+                );
+            });
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Target DPI Stage:").size(11.5).color(egui::Color32::from_rgb(100, 116, 139)));
+                for (s_idx, s) in self.config.dpi_stages.iter().enumerate() {
+                    let is_active = self.config.active_dpi_stage == s_idx as u8;
+                    let scol = egui::Color32::from_rgb(s.color.r, s.color.g, s.color.b);
+                    let btn = egui::Button::new(
+                        egui::RichText::new(format!("Stage {} ({} DPI)", s_idx + 1, s.dpi))
+                            .size(11.0)
+                            .strong()
+                            .color(if is_active { egui::Color32::WHITE } else { egui::Color32::from_rgb(30, 41, 59) }),
+                    )
+                    .fill(if is_active { egui::Color32::from_rgb(2, 132, 199) } else { egui::Color32::from_rgb(255, 255, 255) })
+                    .stroke(egui::Stroke::new(1.5_f32, scol))
+                    .rounding(egui::Rounding::same(4.0));
+                    if ui.add(btn).clicked() {
+                        self.config.active_dpi_stage = s_idx as u8;
+                        self.config.dpi_led.color = s.color;
+                    }
+                }
+            });
+        });
+
+        ui.add_space(10.0);
 
         let elapsed = self.start_time.elapsed().as_secs_f32();
         let live_preview_color = match self.config.dpi_led.mode {
@@ -2229,7 +2278,7 @@ impl IcarusApp {
                                     egui::Sense::click(),
                                 );
                                 if resp.clicked() {
-                                    self.config.dpi_led.color = *p_col;
+                                    self.set_active_lighting_color(*p_col);
                                 }
 
                                 ui.painter().rect_filled(
@@ -2335,7 +2384,7 @@ impl IcarusApp {
                                 egui::Image::new(img).max_width(26.0).max_height(26.0),
                             );
                             if ui.add(btn).on_hover_text(name).clicked() {
-                                self.config.dpi_led.color = col;
+                                self.set_active_lighting_color(col);
                             }
                         }
                     });
@@ -2388,7 +2437,7 @@ impl IcarusApp {
                                 egui::Image::new(img).max_width(26.0).max_height(26.0),
                             );
                             if ui.add(btn).on_hover_text(name).clicked() {
-                                self.config.dpi_led.color = col;
+                                self.set_active_lighting_color(col);
                             }
                         }
                     });
@@ -2443,6 +2492,9 @@ impl IcarusApp {
                                 self.config.dpi_led.color.b.saturating_add(5);
                         }
                     });
+
+                    // Sync fine-tuned slider RGB to the active DPI stage
+                    self.set_active_lighting_color(self.config.dpi_led.color);
 
                     ui.add_space(8.0);
 
