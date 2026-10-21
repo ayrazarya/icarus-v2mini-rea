@@ -255,6 +255,51 @@ impl IcarusDevice {
         })
     }
 
+    /// Read lift-off distance (LOD).
+    pub fn read_lod(&self) -> Result<LiftOffDistance> {
+        let resp = self.send_command(&Command::read_lod())?;
+        let code = resp.payload().first().copied().unwrap_or(0x00);
+        Ok(LiftOffDistance::from_code(code).unwrap_or(LiftOffDistance::Low))
+    }
+
+    /// Read debounce time in milliseconds.
+    pub fn read_debounce(&self) -> Result<u8> {
+        let resp = self.send_command(&Command::read_debounce())?;
+        Ok(resp.payload().first().copied().unwrap_or(4).min(20))
+    }
+
+    /// Read angle snapping.
+    pub fn read_angle_snapping(&self) -> Result<bool> {
+        let resp = self.send_command(&Command::read_angle_snap())?;
+        Ok(resp.payload().first().copied().unwrap_or(0x00) == 0x01)
+    }
+
+    /// Read motion sync.
+    pub fn read_motion_sync(&self) -> Result<bool> {
+        let resp = self.send_command(&Command::read_motion_sync())?;
+        Ok(resp.payload().first().copied().unwrap_or(0x00) == 0x01)
+    }
+
+    /// Read ripple control (high DPI smoothing).
+    pub fn read_ripple_control(&self) -> Result<bool> {
+        let resp = self.send_command(&Command::read_ripple())?;
+        Ok(resp.payload().first().copied().unwrap_or(0x00) == 0x01)
+    }
+
+    /// Read sensor performance mode (true = Performance, false = Office).
+    pub fn read_performance_mode(&self) -> Result<bool> {
+        let resp = self.send_command(&Command::read_sensor_mode())?;
+        // 0x00 = Performance, 0x01 = Office
+        Ok(resp.payload().first().copied().unwrap_or(0x00) == 0x00)
+    }
+
+    /// Read sensor sleep timer in seconds.
+    pub fn read_sensor_sleep(&self) -> Result<u32> {
+        let resp = self.send_command(&Command::read_sensor_sleep())?;
+        let code = resp.payload().first().copied().unwrap_or(0x00);
+        Ok((code as u32) * 10)
+    }
+
     // ── Write operations ─────────────────────────────────────────────
 
     /// Set the polling rate.
@@ -305,28 +350,60 @@ impl IcarusDevice {
 
     /// Set the lift-off distance.
     pub fn set_lod(&self, lod: LiftOffDistance) -> Result<()> {
-        let cmd = Command::write(0x01, 0x08, &[lod.to_code()]);
+        let cmd = Command::write_lod(lod.to_code());
+        self.send_write(&cmd)?;
+        Ok(())
+    }
+
+    /// Set sensor performance mode (true = Performance, false = Office).
+    pub fn set_performance_mode(&self, performance: bool) -> Result<()> {
+        let cmd = Command::write_sensor_mode(performance);
         self.send_write(&cmd)?;
         Ok(())
     }
 
     /// Set angle snapping on/off.
     pub fn set_angle_snapping(&self, enabled: bool) -> Result<()> {
-        let cmd = Command::write(0x01, 0x09, &[if enabled { 0x01 } else { 0x00 }]);
+        let cmd = Command::write_angle_snap(enabled);
         self.send_write(&cmd)?;
         Ok(())
     }
 
     /// Set motion sync on/off.
     pub fn set_motion_sync(&self, enabled: bool) -> Result<()> {
-        let cmd = Command::write(0x01, 0x0B, &[if enabled { 0x01 } else { 0x00 }]);
+        let cmd = Command::write_motion_sync(enabled);
         self.send_write(&cmd)?;
         Ok(())
     }
 
-    /// Set debounce time.
+    /// Set ripple control on/off.
+    pub fn set_ripple_control(&self, enabled: bool) -> Result<()> {
+        let cmd = Command::write_ripple(enabled);
+        self.send_write(&cmd)?;
+        Ok(())
+    }
+
+    /// Set debounce time in milliseconds (0–20ms).
     pub fn set_debounce(&self, ms: u8) -> Result<()> {
-        let cmd = Command::write(0x01, 0x07, &[ms]);
+        let clamped = ms.min(20);
+        let cmd = Command::write_debounce(clamped);
+        self.send_write(&cmd)?;
+        Ok(())
+    }
+
+    /// Set sensor idle sleep timer in seconds.
+    pub fn set_sensor_sleep(&self, seconds: u32) -> Result<()> {
+        let cmd = Command::write_sensor_sleep(seconds);
+        self.send_write(&cmd)?;
+        Ok(())
+    }
+
+    /// Set the button mapping for a specific button index (0–5).
+    pub fn set_button_mapping(&self, idx: u8, action: &crate::config::ButtonAction) -> Result<()> {
+        if idx > 5 {
+            bail!("Button index must be 0–5, got {}", idx);
+        }
+        let cmd = Command::write_button(idx, action.to_bytes());
         self.send_write(&cmd)?;
         Ok(())
     }
@@ -345,34 +422,75 @@ impl IcarusDevice {
     // ── Composite operations ─────────────────────────────────────────
 
     /// Read the complete current configuration from the mouse.
+    ///
+    /// Uses graceful fallbacks for registers to avoid failing if a single packet drops.
     pub fn read_config(&self) -> Result<MouseConfig> {
-        let config = MouseConfig {
-            polling_rate: self.read_polling_rate()?,
-            active_dpi_stage: self.read_active_dpi_stage()?,
-            dpi_led: self.read_dpi_led()?,
-            ..Default::default()
-        };
+        let mut config = MouseConfig::default();
 
+        if let Ok(rate) = self.read_polling_rate() {
+            config.polling_rate = rate;
+        }
+        if let Ok(stage) = self.read_active_dpi_stage()
+            && (stage as usize) < config.dpi_stages.len()
+        {
+            config.active_dpi_stage = stage;
+        }
+        if let Ok(led) = self.read_dpi_led() {
+            config.dpi_led = led;
+        }
+        if let Ok(lod) = self.read_lod() {
+            config.lod = lod;
+        }
+        if let Ok(perf) = self.read_performance_mode() {
+            config.performance_mode = perf;
+        }
+        if let Ok(angle) = self.read_angle_snapping() {
+            config.angle_snapping = angle;
+        }
+        if let Ok(sync) = self.read_motion_sync() {
+            config.motion_sync = sync;
+        }
+        if let Ok(ripple) = self.read_ripple_control() {
+            config.ripple_control = ripple;
+        }
+        if let Ok(debounce) = self.read_debounce() {
+            config.debounce_ms = debounce;
+        }
+        if let Ok(sleep) = self.read_sensor_sleep() {
+            config.sensor_sleep_seconds = sleep;
+        }
+
+        config.validate();
         Ok(config)
     }
 
-    /// Apply a full configuration to the mouse.
+    /// Apply a full configuration to the mouse registers.
     pub fn apply_config(&self, config: &MouseConfig) -> Result<()> {
-        self.set_polling_rate(config.polling_rate)?;
-        self.set_active_dpi_stage(config.active_dpi_stage)?;
+        let mut cfg = config.clone();
+        cfg.validate();
 
-        for (i, stage) in config.dpi_stages.iter().enumerate() {
+        self.set_polling_rate(cfg.polling_rate)?;
+        self.set_active_dpi_stage(cfg.active_dpi_stage)?;
+
+        for (i, stage) in cfg.dpi_stages.iter().enumerate() {
             if stage.enabled {
                 self.set_dpi_for_stage(i as u8, stage.dpi)?;
                 self.set_dpi_stage_color(i as u8, stage.color)?;
             }
         }
 
-        self.set_dpi_led(&config.dpi_led)?;
-        self.set_lod(config.lod)?;
-        self.set_angle_snapping(config.angle_snapping)?;
-        self.set_motion_sync(config.motion_sync)?;
-        self.set_debounce(config.debounce_ms)?;
+        self.set_dpi_led(&cfg.dpi_led)?;
+        self.set_lod(cfg.lod)?;
+        self.set_performance_mode(cfg.performance_mode)?;
+        self.set_angle_snapping(cfg.angle_snapping)?;
+        self.set_motion_sync(cfg.motion_sync)?;
+        self.set_ripple_control(cfg.ripple_control)?;
+        self.set_debounce(cfg.debounce_ms)?;
+        self.set_sensor_sleep(cfg.sensor_sleep_seconds)?;
+
+        for (i, btn) in cfg.buttons.iter().enumerate().take(6) {
+            self.set_button_mapping(i as u8, btn)?;
+        }
 
         Ok(())
     }

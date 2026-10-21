@@ -83,6 +83,20 @@ enum Commands {
         state: Option<String>,
     },
 
+    /// Toggle sensor performance mode (performance vs office)
+    Performance {
+        /// "on"/"perf" for performance mode, "off"/"office" for power-saving office mode
+        #[arg(value_name = "STATE")]
+        state: Option<String>,
+    },
+
+    /// Toggle ripple control (high DPI smoothing)
+    Ripple {
+        /// "on" or "off"
+        #[arg(value_name = "STATE")]
+        state: Option<String>,
+    },
+
     /// Set debounce time in milliseconds
     Debounce {
         /// Debounce time in ms (0, 2, 4, 6, 8, 10, 12, 16, 20)
@@ -193,7 +207,7 @@ fn main() -> Result<()> {
             let dev = device::IcarusDevice::open()?;
             println!(
                 "{} Connected via {}",
-                "✓".green().bold(),
+                "[OK]".green().bold(),
                 dev.connection.cyan()
             );
             match cmd {
@@ -204,6 +218,8 @@ fn main() -> Result<()> {
                 Commands::Lod { distance } => cmd_lod(&dev, distance),
                 Commands::AngleSnap { state } => cmd_angle_snap(&dev, state),
                 Commands::MotionSync { state } => cmd_motion_sync(&dev, state),
+                Commands::Performance { state } => cmd_performance(&dev, state),
+                Commands::Ripple { state } => cmd_ripple(&dev, state),
                 Commands::Debounce { ms } => cmd_debounce(&dev, ms),
                 Commands::Battery => cmd_battery(&dev),
                 Commands::Apply { file } => cmd_apply(&dev, &file),
@@ -249,6 +265,66 @@ fn cmd_info(dev: &device::IcarusDevice) -> Result<()> {
             (stage + 1).to_string().yellow()
         ),
         Err(e) => println!("  Active DPI:    {} ({})", "?".red(), e),
+    }
+
+    if let Ok(lod) = dev.read_lod() {
+        println!("  Lift-off Dist: {}", lod.to_string().yellow());
+    }
+
+    if let Ok(perf) = dev.read_performance_mode() {
+        println!(
+            "  Sensor Mode:   {}",
+            if perf {
+                "Performance".green().bold()
+            } else {
+                "Office".yellow()
+            }
+        );
+    }
+
+    if let Ok(ms) = dev.read_debounce() {
+        println!("  Debounce Time: {} ms", ms.to_string().yellow());
+    }
+
+    if let Ok(snap) = dev.read_angle_snapping() {
+        println!(
+            "  Angle Snapping:{}",
+            if snap {
+                " Enabled".green()
+            } else {
+                " Disabled".dimmed()
+            }
+        );
+    }
+
+    if let Ok(sync) = dev.read_motion_sync() {
+        println!(
+            "  Motion Sync:   {}",
+            if sync {
+                " Enabled".green()
+            } else {
+                " Disabled".dimmed()
+            }
+        );
+    }
+
+    if let Ok(ripple) = dev.read_ripple_control() {
+        println!(
+            "  Ripple Control:{}",
+            if ripple {
+                " Enabled".green()
+            } else {
+                " Disabled".dimmed()
+            }
+        );
+    }
+
+    if let Ok(sec) = dev.read_sensor_sleep() {
+        if sec > 0 {
+            println!("  Sleep Timer:   {}s", sec.to_string().yellow());
+        } else {
+            println!("  Sleep Timer:   Never");
+        }
     }
 
     match dev.read_dpi_led() {
@@ -329,7 +405,7 @@ fn cmd_rate(dev: &device::IcarusDevice, rate: Option<u16>) -> Result<()> {
             dev.set_polling_rate(rate)?;
             println!(
                 "{} Polling rate set to {}",
-                "✓".green().bold(),
+                "[OK]".green().bold(),
                 format!("{}", rate).yellow()
             );
         }
@@ -353,7 +429,7 @@ fn cmd_dpi(dev: &device::IcarusDevice, subcmd: Option<DpiCommands>) -> Result<()
             if snapped != value {
                 println!(
                     "{} DPI for stage {} set to {} (snapped from {})",
-                    "✓".green().bold(),
+                    "[OK]".green().bold(),
                     stage.to_string().yellow(),
                     snapped.to_string().cyan(),
                     value
@@ -361,7 +437,7 @@ fn cmd_dpi(dev: &device::IcarusDevice, subcmd: Option<DpiCommands>) -> Result<()
             } else {
                 println!(
                     "{} DPI for stage {} set to {}",
-                    "✓".green().bold(),
+                    "[OK]".green().bold(),
                     stage.to_string().yellow(),
                     value.to_string().cyan(),
                 );
@@ -374,7 +450,7 @@ fn cmd_dpi(dev: &device::IcarusDevice, subcmd: Option<DpiCommands>) -> Result<()
             dev.set_active_dpi_stage(stage - 1)?;
             println!(
                 "{} Active DPI stage set to {}",
-                "✓".green().bold(),
+                "[OK]".green().bold(),
                 stage.to_string().yellow(),
             );
         }
@@ -412,7 +488,7 @@ fn cmd_led(dev: &device::IcarusDevice, subcmd: LedCommands) -> Result<()> {
             dev.set_dpi_led(&led)?;
             println!(
                 "{} LED mode set to {}",
-                "✓".green().bold(),
+                "[OK]".green().bold(),
                 format!("{}", led_mode).yellow(),
             );
         }
@@ -425,7 +501,7 @@ fn cmd_led(dev: &device::IcarusDevice, subcmd: LedCommands) -> Result<()> {
             dev.set_dpi_led(&led)?;
             println!(
                 "{} LED brightness set to {}/10",
-                "✓".green().bold(),
+                "[OK]".green().bold(),
                 level.to_string().yellow(),
             );
         }
@@ -436,7 +512,7 @@ fn cmd_led(dev: &device::IcarusDevice, subcmd: LedCommands) -> Result<()> {
             dev.set_dpi_led(&led)?;
             println!(
                 "{} LED color set to {}",
-                "✓".green().bold(),
+                "[OK]".green().bold(),
                 format!("{}", color).yellow(),
             );
         }
@@ -449,7 +525,7 @@ fn cmd_led(dev: &device::IcarusDevice, subcmd: LedCommands) -> Result<()> {
             dev.set_dpi_led(&led)?;
             println!(
                 "{} Breathing speed set to {}/10",
-                "✓".green().bold(),
+                "[OK]".green().bold(),
                 speed.to_string().yellow(),
             );
         }
@@ -461,7 +537,7 @@ fn cmd_led(dev: &device::IcarusDevice, subcmd: LedCommands) -> Result<()> {
             dev.set_dpi_stage_color(stage - 1, color)?;
             println!(
                 "{} Stage {} LED color set to {}",
-                "✓".green().bold(),
+                "[OK]".green().bold(),
                 stage.to_string().yellow(),
                 format!("{}", color).cyan(),
             );
@@ -473,8 +549,14 @@ fn cmd_led(dev: &device::IcarusDevice, subcmd: LedCommands) -> Result<()> {
 fn cmd_lod(dev: &device::IcarusDevice, distance: Option<String>) -> Result<()> {
     match distance {
         None => {
-            println!("Lift-Off Distance (LOD) options: 1mm (low), 2mm (high)");
-            println!("Use: icarus-v2mini lod 1mm");
+            match dev.read_lod() {
+                Ok(lod) => println!(
+                    "Current Lift-Off Distance (LOD): {}",
+                    lod.to_string().yellow()
+                ),
+                Err(e) => println!("Lift-Off Distance (LOD): error reading ({})", e),
+            }
+            println!("Options: 1mm (low), 2mm (high)");
         }
         Some(d) => {
             let lod = match d.to_lowercase().as_str() {
@@ -485,7 +567,7 @@ fn cmd_lod(dev: &device::IcarusDevice, distance: Option<String>) -> Result<()> {
             dev.set_lod(lod)?;
             println!(
                 "{} Lift-off distance set to {}",
-                "✓".green().bold(),
+                "[OK]".green().bold(),
                 lod.to_string().yellow(),
             );
         }
@@ -495,13 +577,23 @@ fn cmd_lod(dev: &device::IcarusDevice, distance: Option<String>) -> Result<()> {
 
 fn cmd_angle_snap(dev: &device::IcarusDevice, state: Option<String>) -> Result<()> {
     match state {
-        None => println!("Angle snapping: use 'on' or 'off'"),
+        None => match dev.read_angle_snapping() {
+            Ok(enabled) => println!(
+                "Angle Snapping: {}",
+                if enabled {
+                    "enabled".green()
+                } else {
+                    "disabled".red()
+                }
+            ),
+            Err(e) => println!("Angle Snapping: error reading ({})", e),
+        },
         Some(s) => {
             let enabled = parse_on_off(&s)?;
             dev.set_angle_snapping(enabled)?;
             println!(
                 "{} Angle snapping {}",
-                "✓".green().bold(),
+                "[OK]".green().bold(),
                 if enabled {
                     "enabled".green()
                 } else {
@@ -515,13 +607,83 @@ fn cmd_angle_snap(dev: &device::IcarusDevice, state: Option<String>) -> Result<(
 
 fn cmd_motion_sync(dev: &device::IcarusDevice, state: Option<String>) -> Result<()> {
     match state {
-        None => println!("Motion sync: use 'on' or 'off'"),
+        None => match dev.read_motion_sync() {
+            Ok(enabled) => println!(
+                "Motion Sync: {}",
+                if enabled {
+                    "enabled".green()
+                } else {
+                    "disabled".red()
+                }
+            ),
+            Err(e) => println!("Motion Sync: error reading ({})", e),
+        },
         Some(s) => {
             let enabled = parse_on_off(&s)?;
             dev.set_motion_sync(enabled)?;
             println!(
                 "{} Motion sync {}",
-                "✓".green().bold(),
+                "[OK]".green().bold(),
+                if enabled {
+                    "enabled".green()
+                } else {
+                    "disabled".red()
+                }
+            );
+        }
+    }
+    Ok(())
+}
+
+fn cmd_performance(dev: &device::IcarusDevice, state: Option<String>) -> Result<()> {
+    match state {
+        None => match dev.read_performance_mode() {
+            Ok(perf) => println!(
+                "Sensor Mode: {}",
+                if perf {
+                    "Performance (Gaming)".green().bold()
+                } else {
+                    "Office (Power-saving)".yellow()
+                }
+            ),
+            Err(e) => println!("Sensor Mode: error reading ({})", e),
+        },
+        Some(s) => {
+            let perf = parse_on_off(&s)?;
+            dev.set_performance_mode(perf)?;
+            println!(
+                "{} Sensor mode set to {}",
+                "[OK]".green().bold(),
+                if perf {
+                    "Performance".green().bold()
+                } else {
+                    "Office".yellow()
+                }
+            );
+        }
+    }
+    Ok(())
+}
+
+fn cmd_ripple(dev: &device::IcarusDevice, state: Option<String>) -> Result<()> {
+    match state {
+        None => match dev.read_ripple_control() {
+            Ok(enabled) => println!(
+                "Ripple Control: {}",
+                if enabled {
+                    "enabled".green()
+                } else {
+                    "disabled".red()
+                }
+            ),
+            Err(e) => println!("Ripple Control: error reading ({})", e),
+        },
+        Some(s) => {
+            let enabled = parse_on_off(&s)?;
+            dev.set_ripple_control(enabled)?;
+            println!(
+                "{} Ripple control {}",
+                "[OK]".green().bold(),
                 if enabled {
                     "enabled".green()
                 } else {
@@ -536,14 +698,20 @@ fn cmd_motion_sync(dev: &device::IcarusDevice, state: Option<String>) -> Result<
 fn cmd_debounce(dev: &device::IcarusDevice, ms: Option<u8>) -> Result<()> {
     match ms {
         None => {
-            println!("Debounce time options (ms): 0, 2, 4, 6, 8, 10, 12, 16, 20");
-            println!("Use: icarus-v2mini debounce 4");
+            match dev.read_debounce() {
+                Ok(ms) => println!("Current debounce time: {} ms", ms.to_string().yellow()),
+                Err(e) => println!("Debounce time: error reading ({})", e),
+            }
+            println!("Options (ms): 0, 2, 4, 6, 8, 10, 12, 16, 20");
         }
         Some(ms) => {
+            if ms > 20 {
+                anyhow::bail!("Debounce time must be 0–20 ms, got {}", ms);
+            }
             dev.set_debounce(ms)?;
             println!(
                 "{} Debounce time set to {} ms",
-                "✓".green().bold(),
+                "[OK]".green().bold(),
                 ms.to_string().yellow(),
             );
         }
@@ -561,12 +729,16 @@ fn cmd_battery(dev: &device::IcarusDevice) -> Result<()> {
 fn cmd_apply(dev: &device::IcarusDevice, file: &str) -> Result<()> {
     let content = std::fs::read_to_string(file)
         .with_context(|| format!("Failed to read config file: {}", file))?;
-    let cfg: config::MouseConfig = toml::from_str(&content)
+    let mut cfg: config::MouseConfig = toml::from_str(&content)
         .with_context(|| format!("Failed to parse config file: {}", file))?;
+    cfg.validate();
 
     println!("Applying configuration from {}...", file.cyan());
     dev.apply_config(&cfg)?;
-    println!("{} Configuration applied successfully!", "✓".green().bold());
+    println!(
+        "{} Configuration applied successfully!",
+        "[OK]".green().bold()
+    );
     Ok(())
 }
 
@@ -576,7 +748,7 @@ fn cmd_save(dev: &device::IcarusDevice, file: &str) -> Result<()> {
     std::fs::write(file, &content).with_context(|| format!("Failed to write: {}", file))?;
     println!(
         "{} Configuration saved to {}",
-        "✓".green().bold(),
+        "[OK]".green().bold(),
         file.cyan()
     );
     Ok(())
@@ -614,7 +786,11 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f510", MODE="0666"
 
     let rules_path = "99-icarus-mouse.rules";
     std::fs::write(rules_path, rule)?;
-    println!("  {} Written to {}", "✓".green().bold(), rules_path.cyan());
+    println!(
+        "  {} Written to {}",
+        "[OK]".green().bold(),
+        rules_path.cyan()
+    );
     println!("  sudo cp {} /etc/udev/rules.d/", rules_path);
 
     Ok(())
@@ -622,8 +798,8 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f510", MODE="0666"
 
 fn parse_on_off(s: &str) -> Result<bool> {
     match s.to_lowercase().as_str() {
-        "on" | "true" | "1" | "enable" | "enabled" | "yes" => Ok(true),
-        "off" | "false" | "0" | "disable" | "disabled" | "no" => Ok(false),
+        "on" | "true" | "1" | "enable" | "enabled" | "yes" | "perf" | "performance" => Ok(true),
+        "off" | "false" | "0" | "disable" | "disabled" | "no" | "office" | "eco" => Ok(false),
         _ => anyhow::bail!("Invalid value: '{}'. Use 'on' or 'off'", s),
     }
 }

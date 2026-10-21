@@ -103,7 +103,12 @@ const DPI_TABLE_3395: &[(u16, u8)] = &[
 /// Returns `(snapped_dpi, register_value)`.
 pub fn encode_dpi(dpi: u16) -> (u16, u8) {
     // Clamp to valid range
-    let dpi = dpi.clamp(100, 26000);
+    let dpi = dpi.clamp(50, 26000);
+
+    // 50 DPI minimum step
+    if dpi <= 50 {
+        return (50, 0x00);
+    }
 
     // For DPI values in the table range, find the nearest entry
     if dpi <= 8300 {

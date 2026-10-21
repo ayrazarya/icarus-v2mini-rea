@@ -16,6 +16,8 @@ pub const CMD_RESPONSE: u8 = 0x09;
 
 #[allow(dead_code)]
 pub mod addr {
+    /// Sensor mode (0x00 = Performance, 0x01 = Office)
+    pub const SENSOR_MODE: (u8, u8) = (0x01, 0x00);
     /// Polling rate register
     pub const REPORT_RATE: (u8, u8) = (0x01, 0x01);
     /// Current DPI stage index
@@ -28,6 +30,18 @@ pub mod addr {
     pub const BATTERY: (u8, u8) = (0x01, 0x05);
     /// Firmware version
     pub const VERSION: (u8, u8) = (0x01, 0x06);
+    /// Debounce time filter
+    pub const DEBOUNCE: (u8, u8) = (0x01, 0x07);
+    /// Lift-off distance
+    pub const LOD: (u8, u8) = (0x01, 0x08);
+    /// Angle snapping (straight line correction)
+    pub const ANGLE_SNAP: (u8, u8) = (0x01, 0x09);
+    /// Ripple control (high DPI smoothing)
+    pub const RIPPLE: (u8, u8) = (0x01, 0x0A);
+    /// Motion sync
+    pub const MOTION_SYNC: (u8, u8) = (0x01, 0x0B);
+    /// Sensor idle sleep timer
+    pub const SENSOR_SLEEP: (u8, u8) = (0x01, 0x0D);
     /// Full flash data dump
     pub const FLASH_ALL: (u8, u8) = (0x02, 0x00);
 }
@@ -58,9 +72,9 @@ impl Command {
         data[0] = CMD_WRITE;
         data[1] = addr_hi;
         data[2] = addr_lo;
-        data[3] = payload.len() as u8;
-
         let copy_len = payload.len().min(12);
+        data[3] = copy_len as u8;
+
         data[4..4 + copy_len].copy_from_slice(&payload[..copy_len]);
 
         data[16] = Self::checksum(&data[..16]);
@@ -110,12 +124,19 @@ impl Response {
         Ok(Self { data })
     }
 
-    /// Parse from a full packet (18 bytes with report ID).
+    /// Parse from a packet (18 bytes with report ID 0x07, or raw 17-byte report).
     pub fn from_packet(bytes: &[u8]) -> Result<Self, ProtocolError> {
-        if bytes.len() < PACKET_SIZE {
-            return Err(ProtocolError::ShortResponse(bytes.len()));
+        if bytes.len() >= PACKET_SIZE && bytes[0] == 0x07 {
+            Self::from_bytes(&bytes[1..])
+        } else if bytes.len() >= REPORT_SIZE && bytes[0] == CMD_RESPONSE {
+            Self::from_bytes(&bytes[..REPORT_SIZE])
+        } else if bytes.len() >= PACKET_SIZE {
+            Self::from_bytes(&bytes[1..])
+        } else if bytes.len() >= REPORT_SIZE {
+            Self::from_bytes(&bytes[..REPORT_SIZE])
+        } else {
+            Err(ProtocolError::ShortResponse(bytes.len()))
         }
-        Self::from_bytes(&bytes[1..])
     }
 
     /// Check if this is a valid response to a read command.
@@ -212,6 +233,102 @@ impl Command {
             &[mode, brightness, breath_speed, r, g, b],
         )
     }
+
+    /// Read lift-off distance (LOD).
+    pub fn read_lod() -> Self {
+        Self::read(addr::LOD.0, addr::LOD.1, 0x01)
+    }
+
+    /// Write lift-off distance (LOD).
+    pub fn write_lod(code: u8) -> Self {
+        Self::write(addr::LOD.0, addr::LOD.1, &[code])
+    }
+
+    /// Read debounce time.
+    pub fn read_debounce() -> Self {
+        Self::read(addr::DEBOUNCE.0, addr::DEBOUNCE.1, 0x01)
+    }
+
+    /// Write debounce time filter.
+    pub fn write_debounce(ms: u8) -> Self {
+        Self::write(addr::DEBOUNCE.0, addr::DEBOUNCE.1, &[ms])
+    }
+
+    /// Read angle snapping.
+    pub fn read_angle_snap() -> Self {
+        Self::read(addr::ANGLE_SNAP.0, addr::ANGLE_SNAP.1, 0x01)
+    }
+
+    /// Write angle snapping.
+    pub fn write_angle_snap(enabled: bool) -> Self {
+        Self::write(
+            addr::ANGLE_SNAP.0,
+            addr::ANGLE_SNAP.1,
+            &[if enabled { 0x01 } else { 0x00 }],
+        )
+    }
+
+    /// Read motion sync.
+    pub fn read_motion_sync() -> Self {
+        Self::read(addr::MOTION_SYNC.0, addr::MOTION_SYNC.1, 0x01)
+    }
+
+    /// Write motion sync.
+    pub fn write_motion_sync(enabled: bool) -> Self {
+        Self::write(
+            addr::MOTION_SYNC.0,
+            addr::MOTION_SYNC.1,
+            &[if enabled { 0x01 } else { 0x00 }],
+        )
+    }
+
+    /// Read ripple control.
+    pub fn read_ripple() -> Self {
+        Self::read(addr::RIPPLE.0, addr::RIPPLE.1, 0x01)
+    }
+
+    /// Write ripple control.
+    pub fn write_ripple(enabled: bool) -> Self {
+        Self::write(
+            addr::RIPPLE.0,
+            addr::RIPPLE.1,
+            &[if enabled { 0x01 } else { 0x00 }],
+        )
+    }
+
+    /// Read sensor mode (performance vs office).
+    pub fn read_sensor_mode() -> Self {
+        Self::read(addr::SENSOR_MODE.0, addr::SENSOR_MODE.1, 0x01)
+    }
+
+    /// Write sensor mode (0x00 = Performance, 0x01 = Office).
+    pub fn write_sensor_mode(performance: bool) -> Self {
+        Self::write(
+            addr::SENSOR_MODE.0,
+            addr::SENSOR_MODE.1,
+            &[if performance { 0x00 } else { 0x01 }],
+        )
+    }
+
+    /// Read sensor sleep timer.
+    pub fn read_sensor_sleep() -> Self {
+        Self::read(addr::SENSOR_SLEEP.0, addr::SENSOR_SLEEP.1, 0x01)
+    }
+
+    /// Write sensor sleep timer.
+    pub fn write_sensor_sleep(seconds: u32) -> Self {
+        let code = if seconds == 0 {
+            0x00
+        } else {
+            (seconds / 10).clamp(1, 60) as u8
+        };
+        Self::write(addr::SENSOR_SLEEP.0, addr::SENSOR_SLEEP.1, &[code])
+    }
+
+    /// Write 3-byte button mapping for a specific button index (0..5).
+    pub fn write_button(idx: u8, action_bytes: [u8; 3]) -> Self {
+        Self::write(0x01, 0x30 + idx * 3, &action_bytes)
+    }
 }
 
 #[cfg(test)]
@@ -254,5 +371,58 @@ mod tests {
         assert!(resp.is_read_response());
         assert_eq!(resp.addr(), (0x01, 0x01));
         assert_eq!(resp.payload(), &[0x04]);
+    }
+
+    #[test]
+    fn test_response_from_packet_with_and_without_prefix() {
+        let mut raw17 = [0u8; 17];
+        raw17[0] = CMD_RESPONSE;
+        raw17[1] = 0x01;
+        raw17[2] = 0x08; // LOD
+        raw17[3] = 0x01;
+        raw17[4] = 0x01; // 2mm
+        raw17[16] = raw17[..16].iter().fold(0u8, |a, &b| a ^ b);
+
+        // 17-byte raw packet
+        let resp17 = Response::from_packet(&raw17).unwrap();
+        assert!(resp17.is_read_response());
+        assert_eq!(resp17.payload(), &[0x01]);
+
+        // 18-byte prefixed packet (report ID 0x07)
+        let mut raw18 = [0u8; 18];
+        raw18[0] = 0x07;
+        raw18[1..].copy_from_slice(&raw17);
+        let resp18 = Response::from_packet(&raw18).unwrap();
+        assert!(resp18.is_read_response());
+        assert_eq!(resp18.payload(), &[0x01]);
+    }
+
+    #[test]
+    fn test_extended_hardware_commands() {
+        let lod = Command::write_lod(0x01);
+        assert_eq!(lod.data[0], CMD_WRITE);
+        assert_eq!((lod.data[1], lod.data[2]), addr::LOD);
+        assert_eq!(lod.data[4], 0x01);
+
+        let deb = Command::write_debounce(8);
+        assert_eq!((deb.data[1], deb.data[2]), addr::DEBOUNCE);
+        assert_eq!(deb.data[4], 8);
+
+        let snap = Command::write_angle_snap(true);
+        assert_eq!((snap.data[1], snap.data[2]), addr::ANGLE_SNAP);
+        assert_eq!(snap.data[4], 0x01);
+
+        let rip = Command::write_ripple(false);
+        assert_eq!((rip.data[1], rip.data[2]), addr::RIPPLE);
+        assert_eq!(rip.data[4], 0x00);
+
+        let mode = Command::write_sensor_mode(true);
+        assert_eq!((mode.data[1], mode.data[2]), addr::SENSOR_MODE);
+        assert_eq!(mode.data[4], 0x00); // 0x00 = Performance
+
+        let btn = Command::write_button(2, [0x01, 0x04, 0x00]);
+        assert_eq!(btn.data[1], 0x01);
+        assert_eq!(btn.data[2], 0x36); // 0x30 + 2*3 = 0x36
+        assert_eq!(&btn.data[4..7], &[0x01, 0x04, 0x00]);
     }
 }

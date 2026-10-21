@@ -541,6 +541,90 @@ impl Default for MouseConfig {
     }
 }
 
+impl MouseConfig {
+    /// Validates and sanitizes the configuration, clamping all values into valid hardware ranges.
+    pub fn validate(&mut self) {
+        // Active profile: 1..=5
+        if self.active_profile < 1 || self.active_profile > 5 {
+            self.active_profile = 1;
+        }
+
+        // Debounce: 0..=20 ms, snapped to even milliseconds
+        if self.debounce_ms > 20 {
+            self.debounce_ms = 20;
+        }
+        self.debounce_ms = (self.debounce_ms / 2) * 2;
+
+        // Ensure buttons has exactly 6 buttons
+        let default_buttons = [
+            ButtonAction::MouseButton(0x01),
+            ButtonAction::MouseButton(0x02),
+            ButtonAction::MouseButton(0x04),
+            ButtonAction::MouseButton(0x08),
+            ButtonAction::MouseButton(0x10),
+            ButtonAction::DpiSwitch,
+        ];
+        while self.buttons.len() < 6 {
+            let idx = self.buttons.len();
+            self.buttons.push(default_buttons[idx]);
+        }
+        self.buttons.truncate(6);
+
+        // Ensure dpi_stages is not empty and has at most 8 stages
+        if self.dpi_stages.is_empty() {
+            *self = Self::default();
+            return;
+        }
+        if self.dpi_stages.len() > 8 {
+            self.dpi_stages.truncate(8);
+        }
+
+        // Validate each DPI stage value
+        for stage in &mut self.dpi_stages {
+            stage.dpi = crate::dpi::snap_dpi(stage.dpi);
+        }
+
+        // Ensure at least one DPI stage is enabled
+        let has_enabled = self.dpi_stages.iter().any(|s| s.enabled);
+        if !has_enabled {
+            self.dpi_stages[0].enabled = true;
+        }
+
+        // Active DPI stage must point to an enabled stage within bounds
+        if self.active_dpi_stage as usize >= self.dpi_stages.len()
+            || !self.dpi_stages[self.active_dpi_stage as usize].enabled
+        {
+            if let Some(first_enabled) = self.dpi_stages.iter().position(|s| s.enabled) {
+                self.active_dpi_stage = first_enabled as u8;
+            } else {
+                self.dpi_stages[0].enabled = true;
+                self.active_dpi_stage = 0;
+            }
+        }
+
+        // DPI LED brightness: 0..=10
+        if self.dpi_led.brightness > 10 {
+            self.dpi_led.brightness = 10;
+        }
+
+        // DPI LED breath speed: 1..=10
+        self.dpi_led.breath_speed = self.dpi_led.breath_speed.clamp(1, 10);
+
+        // Sleep timers (max 600s / 10 minutes)
+        if self.sensor_sleep_seconds > 600 {
+            self.sensor_sleep_seconds = 600;
+        }
+        if self.led_sleep_seconds > 600 {
+            self.led_sleep_seconds = 600;
+        }
+
+        // Macros list: ensure at least 1 macro exists
+        if self.macros.is_empty() {
+            self.macros = default_macros();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -613,5 +697,25 @@ mod tests {
         assert_eq!(parsed.polling_rate, PollingRate::Hz1000);
         assert_eq!(parsed.dpi_stages.len(), 5);
         assert_eq!(parsed.buttons.len(), 6);
+    }
+
+    #[test]
+    fn test_config_validation() {
+        let mut cfg = MouseConfig::default();
+        cfg.active_profile = 99; // invalid
+        cfg.debounce_ms = 55; // invalid
+        cfg.buttons.clear(); // empty buttons
+        cfg.dpi_stages[cfg.active_dpi_stage as usize].enabled = false; // active stage disabled
+        cfg.dpi_led.brightness = 99; // invalid
+        cfg.dpi_led.breath_speed = 0; // invalid
+
+        cfg.validate();
+
+        assert_eq!(cfg.active_profile, 1);
+        assert_eq!(cfg.debounce_ms, 20);
+        assert_eq!(cfg.buttons.len(), 6);
+        assert!(cfg.dpi_stages[cfg.active_dpi_stage as usize].enabled);
+        assert_eq!(cfg.dpi_led.brightness, 10);
+        assert_eq!(cfg.dpi_led.breath_speed, 1);
     }
 }
