@@ -1,0 +1,75 @@
+# ICARUS V2 MINI Mouse Profile
+# Example configuration template (defaults matching factory firmware)
+
+polling_rate = "Hz1000"
+active_dpi_stage = 1
+lod = "Low"
+angle_snapping = false
+ripple_control = false
+motion_sync = true
+debounce_ms = 4
+
+# Button mappings (1: Left, 2: Right, 4: Middle, 8: Back, 16: Forward, "DpiSwitch")
+buttons = [
+    { MouseButton = 1 },
+    { MouseButton = 2 },
+    { MouseButton = 4 },
+    { MouseButton = 8 },
+    { MouseButton = 16 },
+    "DpiSwitch",
+]
+
+[[dpi_stages]]
+dpi = 400
+enabled = true
+
+[dpi_stages.color]
+r = 255
+g = 0
+b = 0
+
+[[dpi_stages]]
+dpi = 800
+enabled = true
+
+[dpi_stages.color]
+r = 0
+g = 255
+b = 255
+
+[[dpi_stages]]
+dpi = 1600
+enabled = true
+
+[dpi_stages.color]
+r = 0
+g = 255
+b = 0
+
+[[dpi_stages]]
+dpi = 3200
+enabled = true
+
+[dpi_stages.color]
+r = 255
+g = 255
+b = 255
+
+[[dpi_stages]]
+dpi = 6400
+enabled = true
+
+[dpi_stages.color]
+r = 255
+g = 255
+b = 0
+
+[dpi_led]
+mode = "Solid"
+brightness = 10
+breath_speed = 3
+
+[dpi_led.color]
+r = 255
+g = 255
+b = 255

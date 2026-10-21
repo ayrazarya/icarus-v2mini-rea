@@ -1,0 +1,15 @@
+[package]
+name = "icarus-v2mini"
+version = "0.1.0"
+edition = "2024"
+description = "Native Linux configuration tool for ICARUS V2 MINI gaming mouse"
+license = "MIT"
+
+[dependencies]
+hidapi = { version = "2.6", default-features = false, features = ["linux-native-basic-udev"] }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+anyhow = "1"
+colored = "3"
+thiserror = "2"
