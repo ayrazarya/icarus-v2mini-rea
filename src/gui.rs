@@ -446,53 +446,49 @@ impl eframe::App for IcarusApp {
 
                     ui.add_space(24.0);
 
-                    // Segmented Pill Profile Selector (Profiles 1 to 5)
+                    // Compact Profile Dropdown Selector (Profiles 1 to 5)
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing = egui::vec2(4.0, 0.0);
+                        ui.spacing_mut().item_spacing.x = 6.0;
                         ui.label(
                             egui::RichText::new("Profile:")
                                 .size(12.5)
                                 .color(egui::Color32::from_rgb(71, 85, 105))
                                 .strong(),
                         );
-                        ui.add_space(2.0);
 
-                        for p in 1..=5 {
-                            let is_active = self.config.active_profile == p;
-                            let pill_btn = egui::Button::new(
-                                egui::RichText::new(format!("{}", p))
-                                    .size(12.5)
+                        let mut selected_profile = self.config.active_profile;
+                        let prev_profile = selected_profile;
+                        egui::ComboBox::from_id_salt("header_profile_dropdown")
+                            .selected_text(
+                                egui::RichText::new(format!("Profile {}", selected_profile))
+                                    .size(12.0)
                                     .strong()
-                                    .color(if is_active {
-                                        egui::Color32::WHITE
-                                    } else {
-                                        egui::Color32::from_rgb(51, 65, 85)
-                                    }),
+                                    .color(egui::Color32::from_rgb(15, 23, 42)),
                             )
-                            .fill(if is_active {
-                                egui::Color32::from_rgb(2, 132, 199)
-                            } else {
-                                egui::Color32::from_rgb(241, 245, 249)
-                            })
-                            .stroke(egui::Stroke::new(
-                                1.0_f32,
-                                if is_active {
-                                    egui::Color32::from_rgb(2, 132, 199)
-                                } else {
-                                    egui::Color32::from_rgb(226, 232, 240)
-                                },
-                            ))
-                            .rounding(egui::Rounding::same(6.0))
-                            .min_size(egui::vec2(28.0, 26.0));
+                            .width(100.0)
+                            .show_ui(ui, |ui| {
+                                for p in 1..=5 {
+                                    let is_active = p == selected_profile;
+                                    let label = if is_active {
+                                        egui::RichText::new(format!("Profile {}", p))
+                                            .size(12.0)
+                                            .strong()
+                                            .color(egui::Color32::WHITE)
+                                    } else {
+                                        egui::RichText::new(format!("Profile {}", p))
+                                            .size(12.0)
+                                            .color(egui::Color32::from_rgb(30, 41, 59))
+                                    };
+                                    ui.selectable_value(&mut selected_profile, p, label);
+                                }
+                            });
 
-                            if ui
-                                .add(pill_btn)
-                                .on_hover_text(format!("Switch to Profile {}", p))
-                                .clicked()
-                            {
-                                self.config.active_profile = p;
-                                self.set_status(format!("Switched to Profile {}", p), true);
-                            }
+                        if selected_profile != prev_profile {
+                            self.config.active_profile = selected_profile;
+                            self.set_status(
+                                format!("Switched to Profile {}", selected_profile),
+                                true,
+                            );
                         }
                     });
 
