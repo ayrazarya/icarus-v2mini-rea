@@ -1,7 +1,7 @@
 //! Graphical User Interface (GUI) for ICARUS V2 MINI.
 //!
-//! A native Linux desktop configuration tool recreating the original
-//! Windows application with all reverse-engineered features, original icons, and graphics.
+//! A modern, fresh, high-performance Linux desktop configuration application
+//! preserving all reverse-engineered features, original icons, and hardware controls.
 
 use crate::config::{
     ButtonAction, Color, LedMode, LiftOffDistance, MacroEvent, MacroEventType, MacroItem,
@@ -72,7 +72,7 @@ impl IcarusApp {
         // Install image loaders for embedded PNGs
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
-        // Configure sleek dark gaming theme matching original software
+        // Apply modern, sleek dark gaming aesthetic
         Self::apply_theme(&cc.egui_ctx);
 
         let mut app = Self {
@@ -98,34 +98,40 @@ impl IcarusApp {
         app
     }
 
-    /// Set up custom dark theme matching the original gaming mouse software
+    /// Set up modern dark studio gaming theme with smooth gradients, cards, and glowing accents
     fn apply_theme(ctx: &egui::Context) {
         let mut visuals = egui::Visuals::dark();
 
-        visuals.panel_fill = egui::Color32::from_rgb(20, 20, 26);
-        visuals.window_fill = egui::Color32::from_rgb(26, 26, 34);
+        // Canvas & panel colors
+        visuals.panel_fill = egui::Color32::from_rgb(14, 17, 24);
+        visuals.window_fill = egui::Color32::from_rgb(19, 23, 33);
 
-        visuals.selection.bg_fill = egui::Color32::from_rgb(0, 160, 230);
-        visuals.selection.stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0, 210, 255));
+        // Electric cyan accent
+        visuals.selection.bg_fill = egui::Color32::from_rgb(0, 170, 240);
+        visuals.selection.stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0, 220, 255));
 
-        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(32, 32, 42);
+        // Non-interactive widgets
+        visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(24, 29, 41);
         visuals.widgets.noninteractive.fg_stroke =
-            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(220, 220, 230));
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(220, 225, 240));
 
-        visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(38, 38, 50);
+        // Inactive widgets (cards & controls)
+        visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(28, 34, 48);
         visuals.widgets.inactive.fg_stroke =
-            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(200, 200, 215));
-        visuals.widgets.inactive.rounding = egui::Rounding::same(6.0);
+            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(190, 198, 220));
+        visuals.widgets.inactive.rounding = egui::Rounding::same(8.0);
 
-        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(50, 52, 68);
+        // Hovered states
+        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(38, 46, 66);
         visuals.widgets.hovered.fg_stroke =
             egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(255, 255, 255));
-        visuals.widgets.hovered.rounding = egui::Rounding::same(6.0);
+        visuals.widgets.hovered.rounding = egui::Rounding::same(8.0);
 
-        visuals.widgets.active.bg_fill = egui::Color32::from_rgb(0, 130, 200);
+        // Active / Pressed states
+        visuals.widgets.active.bg_fill = egui::Color32::from_rgb(0, 140, 220);
         visuals.widgets.active.fg_stroke =
             egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(255, 255, 255));
-        visuals.widgets.active.rounding = egui::Rounding::same(6.0);
+        visuals.widgets.active.rounding = egui::Rounding::same(8.0);
 
         ctx.set_visuals(visuals);
     }
@@ -196,9 +202,77 @@ impl IcarusApp {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Modern UI Design System Helpers
+// ---------------------------------------------------------------------------
+
+/// Render a modern card frame with rounded corners and subtle border stroke
+fn modern_card<R>(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    egui::Frame::none()
+        .fill(egui::Color32::from_rgb(22, 27, 39))
+        .stroke(egui::Stroke::new(
+            1.0_f32,
+            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 14),
+        ))
+        .rounding(egui::Rounding::same(10.0))
+        .inner_margin(egui::Margin::same(14.0))
+        .show(ui, add_contents)
+        .inner
+}
+
+/// Render a section title with an optional description subtitle
+fn section_header(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>) {
+    ui.label(
+        egui::RichText::new(title)
+            .size(15.0)
+            .strong()
+            .color(egui::Color32::from_rgb(0, 220, 255)),
+    );
+    if let Some(sub) = subtitle {
+        ui.label(
+            egui::RichText::new(sub)
+                .size(11.5)
+                .color(egui::Color32::from_rgb(150, 160, 185)),
+        );
+    }
+    ui.add_space(8.0);
+}
+
+/// Modern pill-shaped toggle switch
+fn modern_toggle(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
+    let desired_size = egui::vec2(38.0, 20.0);
+    let (rect, mut response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+    if response.clicked() {
+        *on = !*on;
+        response.mark_changed();
+    }
+    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, *on, ""));
+
+    if ui.is_rect_visible(rect) {
+        let how_on = if *on { 1.0 } else { 0.0 };
+        let bg_fill = if *on {
+            egui::Color32::from_rgb(0, 160, 240)
+        } else {
+            egui::Color32::from_rgb(44, 52, 70)
+        };
+        ui.painter().rect_filled(rect, 10.0, bg_fill);
+
+        let circle_x = egui::lerp((rect.left() + 10.0)..=(rect.right() - 10.0), how_on);
+        let circle_center = egui::pos2(circle_x, rect.center().y);
+        let radius = 7.5;
+        ui.painter()
+            .circle_filled(circle_center, radius, egui::Color32::WHITE);
+    }
+    response
+}
+
+// ---------------------------------------------------------------------------
+// eframe::App Implementation
+// ---------------------------------------------------------------------------
+
 impl eframe::App for IcarusApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Update simulated pairing state if in progress
+        // Handle 2.4G pairing timeout simulation
         if self.pairing_state == PairingState::Pairing
             && let Some(start) = self.pairing_start
             && start.elapsed() >= Duration::from_millis(1800)
@@ -207,158 +281,240 @@ impl eframe::App for IcarusApp {
             self.set_status("✓ 2.4G Wireless Dongle paired successfully!", true);
         }
 
-        // Top Header Bar featuring original reverse-engineered Logo, Profile Selector & Connection Indicators
+        // Top Modern Header Bar
         egui::TopBottomPanel::top("header_panel")
             .frame(
                 egui::Frame::side_top_panel(&ctx.style())
-                    .fill(egui::Color32::from_rgb(18, 18, 24))
-                    .inner_margin(egui::Margin::symmetric(20.0, 12.0)),
+                    .fill(egui::Color32::from_rgb(14, 18, 26))
+                    .stroke(egui::Stroke::new(
+                        1.0_f32,
+                        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 10),
+                    ))
+                    .inner_margin(egui::Margin::symmetric(24.0, 12.0)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    // Original ICARUS Logo Image
-                    ui.add(
-                        egui::Image::new(egui::include_image!("../assets/Dialog/Logo.png"))
-                            .max_width(28.0)
-                            .max_height(28.0),
-                    );
+                    // Logo container with subtle glowing backdrop
+                    let logo_frame = egui::Frame::none()
+                        .fill(egui::Color32::from_rgb(22, 28, 42))
+                        .stroke(egui::Stroke::new(
+                            1.0_f32,
+                            egui::Color32::from_rgba_unmultiplied(0, 210, 255, 50),
+                        ))
+                        .rounding(egui::Rounding::same(8.0))
+                        .inner_margin(egui::Margin::same(6.0));
+
+                    logo_frame.show(ui, |ui| {
+                        ui.add(
+                            egui::Image::new(egui::include_image!("../assets/Dialog/Logo.png"))
+                                .max_width(26.0)
+                                .max_height(26.0),
+                        );
+                    });
 
                     ui.add_space(8.0);
 
-                    // App Title
-                    ui.label(
-                        egui::RichText::new("ICARUS V2 MINI")
-                            .size(19.0)
-                            .strong()
-                            .color(egui::Color32::from_rgb(0, 210, 255)),
-                    );
-
-                    ui.label(
-                        egui::RichText::new("NATIVE LINUX REIMPLEMENTATION")
-                            .size(10.0)
-                            .color(egui::Color32::from_rgb(120, 120, 140)),
-                    );
+                    // Brand Typography
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new("ICARUS")
+                                    .size(18.0)
+                                    .strong()
+                                    .color(egui::Color32::from_rgb(0, 220, 255)),
+                            );
+                            ui.label(
+                                egui::RichText::new("V2 MINI")
+                                    .size(18.0)
+                                    .strong()
+                                    .color(egui::Color32::WHITE),
+                            );
+                            ui.label(
+                                egui::RichText::new("PRO WIRELESS // PAW3395")
+                                    .size(9.5)
+                                    .color(egui::Color32::from_rgb(120, 130, 155)),
+                            );
+                        });
+                    });
 
                     ui.add_space(20.0);
 
-                    // Original ProjectChoose / Profile Selector (Profiles 1 to 5)
-                    ui.label(
-                        egui::RichText::new("Profile:")
-                            .size(12.0)
-                            .color(egui::Color32::from_rgb(180, 180, 200)),
-                    );
-                    let profiles = [
-                        (1, "Profile 1"),
-                        (2, "Profile 2"),
-                        (3, "Profile 3"),
-                        (4, "Profile 4"),
-                        (5, "Profile 5"),
-                    ];
-                    let current_profile_name = format!("Profile {}", self.config.active_profile);
-                    egui::ComboBox::from_id_salt("header_profile_combo")
-                        .selected_text(current_profile_name)
-                        .width(110.0)
-                        .show_ui(ui, |ui| {
-                            for (p_id, p_name) in profiles {
+                    // Modern Profile Selector Capsule
+                    let profile_frame = egui::Frame::none()
+                        .fill(egui::Color32::from_rgb(22, 28, 42))
+                        .stroke(egui::Stroke::new(
+                            1.0_f32,
+                            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 12),
+                        ))
+                        .rounding(egui::Rounding::same(6.0))
+                        .inner_margin(egui::Margin::symmetric(8.0, 4.0));
+
+                    profile_frame.show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new("PROFILES:")
+                                    .size(10.5)
+                                    .strong()
+                                    .color(egui::Color32::from_rgb(140, 150, 175)),
+                            );
+
+                            for p in 1..=5 {
+                                let is_active = self.config.active_profile == p;
+                                let btn = egui::Button::new(
+                                    egui::RichText::new(format!("{}", p))
+                                        .size(11.0)
+                                        .strong()
+                                        .color(if is_active {
+                                            egui::Color32::WHITE
+                                        } else {
+                                            egui::Color32::from_rgb(160, 170, 195)
+                                        }),
+                                )
+                                .fill(if is_active {
+                                    egui::Color32::from_rgb(0, 140, 220)
+                                } else {
+                                    egui::Color32::TRANSPARENT
+                                })
+                                .rounding(egui::Rounding::same(4.0))
+                                .min_size(egui::vec2(22.0, 20.0));
+
                                 if ui
-                                    .selectable_value(&mut self.config.active_profile, p_id, p_name)
+                                    .add(btn)
+                                    .on_hover_text(format!("Switch to Profile {}", p))
                                     .clicked()
                                 {
-                                    self.set_status(format!("Switched to {}", p_name), true);
+                                    self.config.active_profile = p;
+                                    self.set_status(format!("Active profile: Profile {}", p), true);
                                 }
                             }
                         });
+                    });
 
+                    // Right Side: Hardware Connection & Battery Capsule
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Connection Icon & Status Badge
-                        let is_connected = self.device.is_some();
+                        // Scan button
+                        let scan_btn = egui::Button::new("🔄 Scan")
+                            .fill(egui::Color32::from_rgb(28, 34, 48))
+                            .stroke(egui::Stroke::new(
+                                1.0_f32,
+                                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 14),
+                            ))
+                            .rounding(egui::Rounding::same(6.0))
+                            .min_size(egui::vec2(68.0, 28.0));
 
-                        if is_connected {
-                            if self.is_wireless {
-                                ui.add(
-                                    egui::Image::new(egui::include_image!(
-                                        "../assets/DialogChange/OnLineWifi.png"
-                                    ))
-                                    .max_height(18.0),
-                                );
-                            } else {
-                                ui.add(
-                                    egui::Image::new(egui::include_image!(
-                                        "../assets/DialogChange/OnLineUsb.png"
-                                    ))
-                                    .max_height(18.0),
-                                );
-                            }
-
-                            ui.label(
-                                egui::RichText::new(&self.connection_status)
-                                    .size(12.0)
-                                    .color(egui::Color32::from_rgb(46, 204, 113))
-                                    .strong(),
-                            );
-                        } else {
-                            ui.add(
-                                egui::Image::new(egui::include_image!(
-                                    "../assets/DialogChange/DisOnline.png"
-                                ))
-                                .max_height(18.0),
-                            );
-
-                            ui.label(
-                                egui::RichText::new(&self.connection_status)
-                                    .size(12.0)
-                                    .color(egui::Color32::from_rgb(231, 76, 60))
-                                    .strong(),
-                            );
-                        }
-
-                        // Battery Indicator & Charging icon
-                        if let Some(battery) = self.battery_level {
-                            ui.separator();
-                            if !self.is_wireless {
-                                ui.add(
-                                    egui::Image::new(egui::include_image!(
-                                        "../assets/Dialog/Charg.png"
-                                    ))
-                                    .max_height(16.0),
-                                );
-                            } else {
-                                ui.add(
-                                    egui::Image::new(egui::include_image!(
-                                        "../assets/Dialog/Battery.png"
-                                    ))
-                                    .max_height(16.0),
-                                );
-                            }
-
-                            let battery_color = if battery > 50 {
-                                egui::Color32::from_rgb(46, 204, 113)
-                            } else if battery > 20 {
-                                egui::Color32::from_rgb(241, 196, 15)
-                            } else {
-                                egui::Color32::from_rgb(231, 76, 60)
-                            };
-
-                            ui.label(
-                                egui::RichText::new(format!("{}%", battery))
-                                    .size(12.0)
-                                    .color(battery_color)
-                                    .strong(),
-                            );
-                        }
-
-                        ui.separator();
-
-                        // Scan Device button
-                        if ui.button("🔄 Scan").clicked() {
+                        if ui
+                            .add(scan_btn)
+                            .on_hover_text("Scan for mouse connection")
+                            .clicked()
+                        {
                             self.refresh_device();
                         }
+
+                        // Battery Indicator Pill
+                        if let Some(battery) = self.battery_level {
+                            ui.add_space(4.0);
+                            let bat_frame = egui::Frame::none()
+                                .fill(egui::Color32::from_rgb(22, 28, 42))
+                                .rounding(egui::Rounding::same(6.0))
+                                .inner_margin(egui::Margin::symmetric(8.0, 4.0));
+
+                            bat_frame.show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    if !self.is_wireless {
+                                        ui.add(
+                                            egui::Image::new(egui::include_image!(
+                                                "../assets/Dialog/Charg.png"
+                                            ))
+                                            .max_height(14.0),
+                                        );
+                                    } else {
+                                        ui.add(
+                                            egui::Image::new(egui::include_image!(
+                                                "../assets/Dialog/Battery.png"
+                                            ))
+                                            .max_height(14.0),
+                                        );
+                                    }
+
+                                    let battery_color = if battery > 50 {
+                                        egui::Color32::from_rgb(46, 204, 113)
+                                    } else if battery > 20 {
+                                        egui::Color32::from_rgb(241, 196, 15)
+                                    } else {
+                                        egui::Color32::from_rgb(231, 76, 60)
+                                    };
+
+                                    ui.label(
+                                        egui::RichText::new(format!("{}%", battery))
+                                            .size(11.5)
+                                            .color(battery_color)
+                                            .strong(),
+                                    );
+                                });
+                            });
+                        }
+
+                        // Connection Status Pill
+                        let is_connected = self.device.is_some();
+                        let status_frame = egui::Frame::none()
+                            .fill(egui::Color32::from_rgb(22, 28, 42))
+                            .stroke(egui::Stroke::new(
+                                1.0_f32,
+                                if is_connected {
+                                    egui::Color32::from_rgba_unmultiplied(46, 204, 113, 60)
+                                } else {
+                                    egui::Color32::from_rgba_unmultiplied(231, 76, 60, 60)
+                                },
+                            ))
+                            .rounding(egui::Rounding::same(6.0))
+                            .inner_margin(egui::Margin::symmetric(10.0, 5.0));
+
+                        status_frame.show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                if is_connected {
+                                    if self.is_wireless {
+                                        ui.add(
+                                            egui::Image::new(egui::include_image!(
+                                                "../assets/DialogChange/OnLineWifi.png"
+                                            ))
+                                            .max_height(16.0),
+                                        );
+                                    } else {
+                                        ui.add(
+                                            egui::Image::new(egui::include_image!(
+                                                "../assets/DialogChange/OnLineUsb.png"
+                                            ))
+                                            .max_height(16.0),
+                                        );
+                                    }
+                                    ui.label(
+                                        egui::RichText::new(&self.connection_status)
+                                            .size(11.5)
+                                            .color(egui::Color32::from_rgb(46, 204, 113))
+                                            .strong(),
+                                    );
+                                } else {
+                                    ui.add(
+                                        egui::Image::new(egui::include_image!(
+                                            "../assets/DialogChange/DisOnline.png"
+                                        ))
+                                        .max_height(16.0),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(&self.connection_status)
+                                            .size(11.5)
+                                            .color(egui::Color32::from_rgb(231, 76, 60))
+                                            .strong(),
+                                    );
+                                }
+                            });
+                        });
                     });
                 });
 
-                ui.add_space(8.0);
+                ui.add_space(10.0);
 
-                // Tab Navigation Bar with all 5 Original Reverse-Engineered Tabs
+                // Modern Segmented Navigation Bar
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing = egui::vec2(6.0, 0.0);
 
@@ -376,34 +532,36 @@ impl eframe::App for IcarusApp {
                         let (icon_image, label_text) = match (tab, is_active) {
                             (Tab::Buttons, true) => (
                                 egui::include_image!("../assets/Dialog/HomeChecked.png"),
-                                "Buttons",
+                                "Buttons & Mapping",
                             ),
-                            (Tab::Buttons, false) => {
-                                (egui::include_image!("../assets/Dialog/Home.png"), "Buttons")
-                            }
+                            (Tab::Buttons, false) => (
+                                egui::include_image!("../assets/Dialog/Home.png"),
+                                "Buttons & Mapping",
+                            ),
                             (Tab::Sensor, true) => (
                                 egui::include_image!("../assets/Dialog/SensorChecked.png"),
-                                "DPI & Sensor",
+                                "Sensor & DPI",
                             ),
                             (Tab::Sensor, false) => (
                                 egui::include_image!("../assets/Dialog/Sensor.png"),
-                                "DPI & Sensor",
+                                "Sensor & DPI",
                             ),
                             (Tab::Lighting, true) => (
                                 egui::include_image!("../assets/Dialog/LightChecked.png"),
-                                "Lighting",
+                                "RGB Lighting",
                             ),
                             (Tab::Lighting, false) => (
                                 egui::include_image!("../assets/Dialog/Light.png"),
-                                "Lighting",
+                                "RGB Lighting",
                             ),
                             (Tab::Macro, true) => (
                                 egui::include_image!("../assets/Dialog/MacroChecked.png"),
-                                "Macro",
+                                "Macro Studio",
                             ),
-                            (Tab::Macro, false) => {
-                                (egui::include_image!("../assets/Dialog/Macro.png"), "Macro")
-                            }
+                            (Tab::Macro, false) => (
+                                egui::include_image!("../assets/Dialog/Macro.png"),
+                                "Macro Studio",
+                            ),
                             (Tab::Settings, true) => (
                                 egui::include_image!("../assets/Dialog/SettingClick.png"),
                                 "Settings & 2.4G",
@@ -416,28 +574,31 @@ impl eframe::App for IcarusApp {
 
                         let text = egui::RichText::new(label_text).size(13.0).strong().color(
                             if is_active {
-                                egui::Color32::from_rgb(0, 210, 255)
+                                egui::Color32::WHITE
                             } else {
-                                egui::Color32::from_rgb(180, 180, 200)
+                                egui::Color32::from_rgb(175, 185, 205)
                             },
                         );
 
                         let btn = egui::Button::image_and_text(
-                            egui::Image::new(icon_image).max_height(18.0),
+                            egui::Image::new(icon_image).max_height(17.0),
                             text,
                         )
                         .fill(if is_active {
-                            egui::Color32::from_rgb(32, 42, 60)
+                            egui::Color32::from_rgb(0, 140, 220)
                         } else {
-                            egui::Color32::from_rgb(26, 26, 34)
+                            egui::Color32::from_rgb(24, 30, 44)
                         })
                         .stroke(if is_active {
-                            egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(0, 180, 240))
+                            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0, 220, 255))
                         } else {
-                            egui::Stroke::NONE
+                            egui::Stroke::new(
+                                1.0_f32,
+                                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 8),
+                            )
                         })
-                        .rounding(egui::Rounding::same(6.0))
-                        .min_size(egui::vec2(136.0, 36.0));
+                        .rounding(egui::Rounding::same(8.0))
+                        .min_size(egui::vec2(148.0, 36.0));
 
                         if ui.add(btn).clicked() {
                             self.active_tab = tab;
@@ -446,54 +607,90 @@ impl eframe::App for IcarusApp {
                 });
             });
 
-        // Bottom Action Footer Bar with Original Reset Image
+        // Bottom Action Footer Bar
         egui::TopBottomPanel::bottom("footer_panel")
             .frame(
                 egui::Frame::side_top_panel(&ctx.style())
-                    .fill(egui::Color32::from_rgb(18, 18, 24))
-                    .inner_margin(egui::Margin::symmetric(20.0, 12.0)),
+                    .fill(egui::Color32::from_rgb(14, 18, 26))
+                    .stroke(egui::Stroke::new(
+                        1.0_f32,
+                        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 10),
+                    ))
+                    .inner_margin(egui::Margin::symmetric(24.0, 12.0)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    // Status feedback message
+                    // Status feedback message toast
                     if let Some((msg, success, time)) = &self.status
                         && time.elapsed() < Duration::from_secs(6)
                     {
-                        let col = if *success {
-                            egui::Color32::from_rgb(46, 204, 113)
+                        let (bg, border, col) = if *success {
+                            (
+                                egui::Color32::from_rgba_unmultiplied(46, 204, 113, 25),
+                                egui::Color32::from_rgb(46, 204, 113),
+                                egui::Color32::from_rgb(46, 204, 113),
+                            )
                         } else {
-                            egui::Color32::from_rgb(231, 76, 60)
+                            (
+                                egui::Color32::from_rgba_unmultiplied(231, 76, 60, 25),
+                                egui::Color32::from_rgb(231, 76, 60),
+                                egui::Color32::from_rgb(231, 76, 60),
+                            )
                         };
-                        ui.label(egui::RichText::new(msg).color(col).strong());
+
+                        egui::Frame::none()
+                            .fill(bg)
+                            .stroke(egui::Stroke::new(1.0_f32, border))
+                            .rounding(egui::Rounding::same(6.0))
+                            .inner_margin(egui::Margin::symmetric(10.0, 4.0))
+                            .show(ui, |ui| {
+                                ui.label(egui::RichText::new(msg).color(col).strong());
+                            });
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Apply button (Primary)
+                        // Apply button (Primary Glowing Blue)
                         let apply_btn = egui::Button::new(
                             egui::RichText::new("✓ Apply Changes")
-                                .size(14.0)
+                                .size(13.5)
                                 .strong()
                                 .color(egui::Color32::WHITE),
                         )
-                        .fill(egui::Color32::from_rgb(0, 140, 220))
-                        .rounding(egui::Rounding::same(6.0))
+                        .fill(egui::Color32::from_rgb(0, 150, 235))
+                        .stroke(egui::Stroke::new(
+                            1.0_f32,
+                            egui::Color32::from_rgb(0, 220, 255),
+                        ))
+                        .rounding(egui::Rounding::same(8.0))
                         .min_size(egui::vec2(150.0, 36.0));
 
-                        if ui.add(apply_btn).clicked() {
+                        if ui
+                            .add(apply_btn)
+                            .on_hover_text("Write changes to mouse hardware")
+                            .clicked()
+                        {
                             self.apply_to_device();
                         }
 
                         // Read from mouse button
                         let read_btn = egui::Button::new("📥 Read from Mouse")
-                            .fill(egui::Color32::from_rgb(38, 38, 50))
-                            .rounding(egui::Rounding::same(6.0))
-                            .min_size(egui::vec2(130.0, 36.0));
+                            .fill(egui::Color32::from_rgb(28, 34, 48))
+                            .stroke(egui::Stroke::new(
+                                1.0_f32,
+                                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 14),
+                            ))
+                            .rounding(egui::Rounding::same(8.0))
+                            .min_size(egui::vec2(140.0, 36.0));
 
-                        if ui.add(read_btn).clicked() {
+                        if ui
+                            .add(read_btn)
+                            .on_hover_text("Load current settings from mouse")
+                            .clicked()
+                        {
                             self.read_from_device();
                         }
 
-                        // Reset button displaying the original Reset graphic
+                        // Factory Reset button with original Reset graphic
                         let reset_img = egui::include_image!("../assets/Buttoninterface/Reset.png");
                         let reset_btn =
                             egui::ImageButton::new(egui::Image::new(reset_img).max_height(26.0));
@@ -513,7 +710,7 @@ impl eframe::App for IcarusApp {
                 });
             });
 
-        // Main Content Area
+        // Central Content Area
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.add_space(8.0);
@@ -530,26 +727,35 @@ impl eframe::App for IcarusApp {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Page Renderers (Tab 1 to Tab 5)
+// ---------------------------------------------------------------------------
+
 impl IcarusApp {
-    /// Render Tab 1: Button Mapping with embedded mouse views & 6 programmable buttons
+    /// Render Tab 1: Button Mapping with interactive multi-angle mouse showcase
     fn render_buttons_tab(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            // Left Column: Visual Mouse Graphic with multi-angle selector
+            // Left Column: Interactive Mouse Showcase Pedestal
             ui.vertical(|ui| {
                 ui.set_width(430.0);
-                ui.group(|ui| {
-                    ui.set_min_size(egui::vec2(410.0, 370.0));
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(8.0);
 
-                        // Select active mouse image angle
+                modern_card(ui, |ui| {
+                    ui.set_min_size(egui::vec2(400.0, 360.0));
+                    ui.vertical_centered(|ui| {
+                        section_header(
+                            ui,
+                            "DEVICE SHOWCASE",
+                            Some("Interactive angle previews of ICARUS V2 MINI"),
+                        );
+
+                        // Active View Image
                         match self.mouse_view_idx {
                             0 => {
                                 ui.add(
                                     egui::Image::new(egui::include_image!(
                                         "../assets/Buttoninterface/mouse0.png"
                                     ))
-                                    .max_width(380.0),
+                                    .max_width(360.0),
                                 );
                             }
                             1 => {
@@ -557,7 +763,7 @@ impl IcarusApp {
                                     egui::Image::new(egui::include_image!(
                                         "../assets/Buttoninterface/mouse1.png"
                                     ))
-                                    .max_width(330.0),
+                                    .max_width(320.0),
                                 );
                             }
                             2 => {
@@ -565,7 +771,7 @@ impl IcarusApp {
                                     egui::Image::new(egui::include_image!(
                                         "../assets/Buttoninterface/mouse2.png"
                                     ))
-                                    .max_width(330.0),
+                                    .max_width(320.0),
                                 );
                             }
                             _ => {
@@ -573,48 +779,51 @@ impl IcarusApp {
                                     egui::Image::new(egui::include_image!(
                                         "../assets/Buttoninterface/mouse3.png"
                                     ))
-                                    .max_width(330.0),
+                                    .max_width(320.0),
                                 );
                             }
                         }
 
-                        ui.add_space(6.0);
+                        ui.add_space(8.0);
 
-                        // Angle thumbnails / view switch buttons
+                        // Perspective angle tabs
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing = egui::vec2(4.0, 0.0);
                             let views = [
-                                (0, "Top View"),
-                                (1, "Angle 1"),
-                                (2, "Angle 2"),
-                                (3, "Side View"),
+                                (0, "🔝 Top View"),
+                                (1, "📐 Angle 1"),
+                                (2, "📐 Angle 2"),
+                                (3, "⬡ Side View"),
                             ];
                             for (idx, name) in views {
                                 let is_active = self.mouse_view_idx == idx;
-                                if ui
-                                    .selectable_label(is_active, name)
-                                    .on_hover_text(format!("Show {}", name))
-                                    .clicked()
-                                {
+                                let btn = egui::Button::new(
+                                    egui::RichText::new(name).size(11.0).color(if is_active {
+                                        egui::Color32::WHITE
+                                    } else {
+                                        egui::Color32::from_rgb(160, 170, 195)
+                                    }),
+                                )
+                                .fill(if is_active {
+                                    egui::Color32::from_rgb(0, 140, 220)
+                                } else {
+                                    egui::Color32::from_rgb(32, 38, 54)
+                                })
+                                .rounding(egui::Rounding::same(6.0));
+
+                                if ui.add(btn).clicked() {
                                     self.mouse_view_idx = idx;
                                 }
                             }
                         });
-
-                        ui.add_space(6.0);
-                        ui.label(
-                            egui::RichText::new("ICARUS V2 MINI — 6 Programmable Buttons")
-                                .size(11.0)
-                                .color(egui::Color32::from_rgb(140, 140, 160)),
-                        );
                     });
                 });
 
                 ui.add_space(10.0);
 
-                // Debounce Setting Card with Original FangDouCheck Graphic
-                ui.group(|ui| {
-                    ui.set_width(410.0);
+                // Debounce Card with original FangDouCheck graphic
+                modern_card(ui, |ui| {
+                    ui.set_width(400.0);
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::Image::new(egui::include_image!(
@@ -625,14 +834,19 @@ impl IcarusApp {
                         ui.label(
                             egui::RichText::new("Debounce Click Filter")
                                 .strong()
-                                .color(egui::Color32::from_rgb(0, 210, 255)),
+                                .color(egui::Color32::from_rgb(0, 220, 255)),
                         );
                     });
                     ui.add_space(4.0);
-                    ui.label(format!(
-                        "Switch anti-shake filter: {} ms (reduces double clicks)",
-                        self.config.debounce_ms
-                    ));
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "Switch contact filter: {} ms (reduces accidental double clicks)",
+                            self.config.debounce_ms
+                        ))
+                        .size(11.5)
+                        .color(egui::Color32::from_rgb(160, 170, 195)),
+                    );
+                    ui.add_space(4.0);
                     ui.add(
                         egui::Slider::new(&mut self.config.debounce_ms, 0..=20)
                             .suffix(" ms")
@@ -641,31 +855,30 @@ impl IcarusApp {
                 });
             });
 
-            ui.add_space(18.0);
+            ui.add_space(16.0);
 
-            // Right Column: Button Reassignments
+            // Right Column: Button Reassignments Grid
             ui.vertical(|ui| {
-                ui.heading(
-                    egui::RichText::new("Button Configuration")
-                        .color(egui::Color32::from_rgb(0, 210, 255)),
+                section_header(
+                    ui,
+                    "BUTTON ASSIGNMENTS",
+                    Some("Remap the 6 hardware switches with gaming & productivity actions"),
                 );
-                ui.label("Configure action bindings for all 6 mouse buttons:");
-                ui.add_space(10.0);
 
                 let button_names = [
-                    "Button 1: Left Click",
-                    "Button 2: Right Click",
-                    "Button 3: Middle Click (Wheel)",
-                    "Button 4: Backward (Side 1)",
-                    "Button 5: Forward (Side 2)",
-                    "Button 6: DPI Cycle Button",
+                    ("Button 1", "Left Click", "Primary click switch"),
+                    ("Button 2", "Right Click", "Secondary click switch"),
+                    ("Button 3", "Middle Click", "Scroll wheel click"),
+                    ("Button 4", "Back", "Side thumb button 1"),
+                    ("Button 5", "Forward", "Side thumb button 2"),
+                    ("Button 6", "DPI Switch", "Top DPI cycle button"),
                 ];
 
-                for (idx, name) in button_names.iter().enumerate() {
-                    ui.group(|ui| {
-                        ui.set_width(380.0);
+                for (idx, (btn_num, btn_default, btn_sub)) in button_names.iter().enumerate() {
+                    modern_card(ui, |ui| {
+                        ui.set_width(410.0);
                         ui.horizontal(|ui| {
-                            // Badge with original LabelNumber icon
+                            // Number badge with original icon asset
                             ui.add(
                                 egui::Image::new(egui::include_image!(
                                     "../assets/Buttoninterface/LabelNumber.png"
@@ -674,14 +887,29 @@ impl IcarusApp {
                             );
 
                             ui.label(
-                                egui::RichText::new(format!(" #{} ", idx + 1))
-                                    .size(12.0)
+                                egui::RichText::new(format!(" {} ", btn_num))
+                                    .size(11.5)
                                     .strong()
                                     .background_color(egui::Color32::from_rgb(0, 140, 220))
                                     .color(egui::Color32::WHITE),
                             );
 
-                            ui.label(egui::RichText::new(*name).strong());
+                            ui.label(
+                                egui::RichText::new(*btn_default)
+                                    .strong()
+                                    .color(egui::Color32::WHITE),
+                            );
+
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(*btn_sub)
+                                            .size(10.5)
+                                            .color(egui::Color32::from_rgb(130, 140, 165)),
+                                    );
+                                },
+                            );
                         });
 
                         ui.add_space(4.0);
@@ -715,7 +943,7 @@ impl IcarusApp {
                             "Back (Side 1)",
                             "Forward (Side 2)",
                             "DPI Switch / Cycle",
-                            "Fire Key (Rapid Fire)",
+                            "Fire Key (Rapid Fire Burst)",
                             "Media (Play / Pause)",
                             "Keyboard Key (Ctrl+A)",
                             "Macro Playback",
@@ -723,9 +951,9 @@ impl IcarusApp {
                         ];
 
                         let prev_category = action_category;
-                        egui::ComboBox::from_id_salt(format!("btn_action_combo_{}", idx))
+                        egui::ComboBox::from_id_salt(format!("btn_combo_{}", idx))
                             .selected_text(options[action_category])
-                            .width(280.0)
+                            .width(320.0)
                             .show_ui(ui, |ui| {
                                 for (opt_idx, opt_name) in options.iter().enumerate() {
                                     ui.selectable_value(&mut action_category, opt_idx, *opt_name);
@@ -758,7 +986,7 @@ impl IcarusApp {
                             }
                         }
 
-                        // If Fire Key is selected, show burst configuration sliders
+                        // Fire Key Controls
                         if let ButtonAction::FireKey {
                             ref mut clicks,
                             ref mut delay_ms,
@@ -766,7 +994,7 @@ impl IcarusApp {
                         {
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
-                                ui.label("Clicks:");
+                                ui.label("Burst Count:");
                                 ui.add(egui::Slider::new(clicks, 2..=15));
                                 ui.label("Interval:");
                                 ui.add(egui::Slider::new(delay_ms, 5..=50).suffix("ms"));
@@ -779,15 +1007,15 @@ impl IcarusApp {
         });
     }
 
-    /// Render Tab 2: Sensor, Polling Rate, 2K/4K Dongle Rates, and PAW3395 DPI Stages
+    /// Render Tab 2: Sensor, Polling Rates (including 2K/4K), and PAW3395 DPI Stages
     fn render_sensor_tab(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            // Left Column: Polling Rate & Advanced Features
+            // Left Column: Polling Rate & Hardware Features
             ui.vertical(|ui| {
-                ui.set_width(330.0);
+                ui.set_width(360.0);
 
-                // Polling Rate Card including 2000Hz and 4000Hz high-speed dongle modes
-                ui.group(|ui| {
+                // Polling Rate Card
+                modern_card(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::Image::new(egui::include_image!(
@@ -795,48 +1023,52 @@ impl IcarusApp {
                             ))
                             .max_height(20.0),
                         );
-                        ui.heading(
-                            egui::RichText::new("Polling Rate")
-                                .color(egui::Color32::from_rgb(0, 210, 255)),
+                        ui.label(
+                            egui::RichText::new("POLLING RATE")
+                                .strong()
+                                .color(egui::Color32::from_rgb(0, 220, 255)),
                         );
                     });
-
-                    ui.label("USB & wireless report frequency:");
+                    ui.label(
+                        egui::RichText::new("USB report frequency & latency response")
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(150, 160, 185)),
+                    );
                     ui.add_space(8.0);
 
-                    // Standard rates (125, 250, 500, 1000 Hz)
-                    let standard_rates = [
-                        (PollingRate::Hz125, "125 Hz", "8 ms latency"),
-                        (PollingRate::Hz250, "250 Hz", "4 ms latency"),
-                        (PollingRate::Hz500, "500 Hz", "2 ms latency"),
-                        (PollingRate::Hz1000, "1000 Hz", "1 ms latency (Gaming)"),
+                    // Standard rates
+                    let rates = [
+                        (PollingRate::Hz125, "125 Hz", "8.0 ms latency"),
+                        (PollingRate::Hz250, "250 Hz", "4.0 ms latency"),
+                        (PollingRate::Hz500, "500 Hz", "2.0 ms latency"),
+                        (PollingRate::Hz1000, "1000 Hz", "1.0 ms (Esports Standard)"),
                     ];
 
-                    for (rate, label, desc) in standard_rates {
+                    for (rate, label, desc) in rates {
                         let is_selected = self.config.polling_rate == rate;
 
                         let btn = egui::Button::new(
                             egui::RichText::new(format!("{} — {}", label, desc))
-                                .size(12.5)
+                                .size(12.0)
                                 .color(if is_selected {
                                     egui::Color32::WHITE
                                 } else {
-                                    egui::Color32::from_rgb(180, 180, 200)
+                                    egui::Color32::from_rgb(180, 190, 210)
                                 })
                                 .strong(),
                         )
                         .fill(if is_selected {
-                            egui::Color32::from_rgb(0, 130, 200)
+                            egui::Color32::from_rgb(0, 140, 220)
                         } else {
-                            egui::Color32::from_rgb(32, 32, 42)
+                            egui::Color32::from_rgb(32, 38, 54)
                         })
                         .stroke(if is_selected {
-                            egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(0, 210, 255))
+                            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0, 220, 255))
                         } else {
                             egui::Stroke::NONE
                         })
                         .rounding(egui::Rounding::same(6.0))
-                        .min_size(egui::vec2(300.0, 32.0));
+                        .min_size(egui::vec2(320.0, 32.0));
 
                         if ui.add(btn).clicked() {
                             self.config.polling_rate = rate;
@@ -844,11 +1076,15 @@ impl IcarusApp {
                         ui.add_space(3.0);
                     }
 
-                    ui.add_space(4.0);
-                    ui.label("High-Speed 4K Dongle Modes:");
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new("High-Speed 4K Dongle Modes:")
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(140, 150, 175)),
+                    );
                     ui.add_space(4.0);
 
-                    // High-speed modes (2000 Hz & 4000 Hz) with original graphics
+                    // High-speed rates with original graphics
                     ui.horizontal(|ui| {
                         let is_2k = self.config.polling_rate == PollingRate::Hz2000;
                         let btn_2k = egui::Button::image_and_text(
@@ -856,19 +1092,19 @@ impl IcarusApp {
                                 "../assets/DialogChange/2KHz.png"
                             ))
                             .max_height(20.0),
-                            egui::RichText::new("2000 Hz").strong(),
+                            egui::RichText::new("2000 Hz (0.5 ms)").strong(),
                         )
                         .fill(if is_2k {
-                            egui::Color32::from_rgb(0, 130, 200)
+                            egui::Color32::from_rgb(0, 140, 220)
                         } else {
-                            egui::Color32::from_rgb(32, 32, 42)
+                            egui::Color32::from_rgb(32, 38, 54)
                         })
                         .stroke(if is_2k {
-                            egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(0, 210, 255))
+                            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0, 220, 255))
                         } else {
                             egui::Stroke::NONE
                         })
-                        .min_size(egui::vec2(146.0, 34.0));
+                        .min_size(egui::vec2(156.0, 34.0));
 
                         if ui.add(btn_2k).clicked() {
                             self.config.polling_rate = PollingRate::Hz2000;
@@ -880,19 +1116,19 @@ impl IcarusApp {
                                 "../assets/DialogChange/4KHz.png"
                             ))
                             .max_height(20.0),
-                            egui::RichText::new("4000 Hz").strong(),
+                            egui::RichText::new("4000 Hz (0.25 ms)").strong(),
                         )
                         .fill(if is_4k {
-                            egui::Color32::from_rgb(0, 130, 200)
+                            egui::Color32::from_rgb(0, 140, 220)
                         } else {
-                            egui::Color32::from_rgb(32, 32, 42)
+                            egui::Color32::from_rgb(32, 38, 54)
                         })
                         .stroke(if is_4k {
-                            egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(0, 210, 255))
+                            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0, 220, 255))
                         } else {
                             egui::Stroke::NONE
                         })
-                        .min_size(egui::vec2(146.0, 34.0));
+                        .min_size(egui::vec2(156.0, 34.0));
 
                         if ui.add(btn_4k).clicked() {
                             self.config.polling_rate = PollingRate::Hz4000;
@@ -903,42 +1139,47 @@ impl IcarusApp {
                 ui.add_space(10.0);
 
                 // Lift-Off Distance (LOD) Card
-                ui.group(|ui| {
+                modern_card(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::Image::new(egui::include_image!("../assets/Sensor/LOD.png"))
                                 .max_height(16.0),
                         );
-                        ui.heading(
-                            egui::RichText::new("Lift-Off Distance (LOD)")
-                                .color(egui::Color32::from_rgb(0, 210, 255)),
+                        ui.label(
+                            egui::RichText::new("LIFT-OFF DISTANCE (LOD)")
+                                .strong()
+                                .color(egui::Color32::from_rgb(0, 220, 255)),
                         );
                     });
-                    ui.label("Sensor tracking cut-off height:");
-                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("Sensor tracking cut-off altitude")
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(150, 160, 185)),
+                    );
+                    ui.add_space(6.0);
 
                     ui.horizontal(|ui| {
                         let low_selected = self.config.lod == LiftOffDistance::Low;
-                        let low_btn = egui::Button::new("1 mm (Low)")
+                        let low_btn = egui::Button::new("1 mm (Low LOD)")
                             .fill(if low_selected {
-                                egui::Color32::from_rgb(0, 130, 200)
+                                egui::Color32::from_rgb(0, 140, 220)
                             } else {
-                                egui::Color32::from_rgb(32, 32, 42)
+                                egui::Color32::from_rgb(32, 38, 54)
                             })
-                            .min_size(egui::vec2(145.0, 30.0));
+                            .min_size(egui::vec2(154.0, 32.0));
 
                         if ui.add(low_btn).clicked() {
                             self.config.lod = LiftOffDistance::Low;
                         }
 
                         let high_selected = self.config.lod == LiftOffDistance::High;
-                        let high_btn = egui::Button::new("2 mm (High)")
+                        let high_btn = egui::Button::new("2 mm (High LOD)")
                             .fill(if high_selected {
-                                egui::Color32::from_rgb(0, 130, 200)
+                                egui::Color32::from_rgb(0, 140, 220)
                             } else {
-                                egui::Color32::from_rgb(32, 32, 42)
+                                egui::Color32::from_rgb(32, 38, 54)
                             })
-                            .min_size(egui::vec2(145.0, 30.0));
+                            .min_size(egui::vec2(154.0, 32.0));
 
                         if ui.add(high_btn).clicked() {
                             self.config.lod = LiftOffDistance::High;
@@ -948,35 +1189,21 @@ impl IcarusApp {
 
                 ui.add_space(10.0);
 
-                // Performance Mode vs Office Mode & Sensor Sleep
-                ui.group(|ui| {
-                    ui.heading(
-                        egui::RichText::new("Power & Sleep Management")
-                            .color(egui::Color32::from_rgb(0, 210, 255)),
+                // Power & Sensor Sleep Management
+                modern_card(ui, |ui| {
+                    section_header(
+                        ui,
+                        "POWER & SLEEP",
+                        Some("Energy saving vs maximum tracking response"),
                     );
-                    ui.add_space(4.0);
 
-                    // Performance mode toggle
                     ui.horizontal(|ui| {
-                        let toggle_img = if self.config.performance_mode {
-                            egui::include_image!("../assets/Sensor/Open.png")
-                        } else {
-                            egui::include_image!("../assets/Sensor/Close.png")
-                        };
-                        if ui
-                            .add(egui::ImageButton::new(
-                                egui::Image::new(toggle_img).max_height(18.0),
-                            ))
-                            .clicked()
-                        {
-                            self.config.performance_mode = !self.config.performance_mode;
-                        }
-
+                        modern_toggle(ui, &mut self.config.performance_mode);
                         ui.label(
                             egui::RichText::new(if self.config.performance_mode {
-                                "Performance Mode (High Responsiveness)"
+                                "⚡ Performance Mode (0ms delay)"
                             } else {
-                                "Office Mode (Power-Saving / Extended Battery)"
+                                "🍃 Office Eco Mode (Battery Save)"
                             })
                             .strong(),
                         );
@@ -984,7 +1211,6 @@ impl IcarusApp {
 
                     ui.add_space(6.0);
 
-                    // Sensor idle sleep timer dropdown
                     ui.horizontal(|ui| {
                         ui.label("Sensor Sleep Timer:");
                         let sleep_options = [
@@ -1005,7 +1231,7 @@ impl IcarusApp {
 
                         egui::ComboBox::from_id_salt("sensor_sleep_combo")
                             .selected_text(selected_label)
-                            .width(130.0)
+                            .width(140.0)
                             .show_ui(ui, |ui| {
                                 for (val, label) in sleep_options {
                                     ui.selectable_value(
@@ -1020,84 +1246,44 @@ impl IcarusApp {
 
                 ui.add_space(10.0);
 
-                // Advanced Sensor Toggles (Motion Sync, Angle Snapping, Ripple Control)
-                ui.group(|ui| {
-                    ui.heading(
-                        egui::RichText::new("Sensor Features")
-                            .color(egui::Color32::from_rgb(0, 210, 255)),
+                // Pro Sensor Feature Toggles
+                modern_card(ui, |ui| {
+                    section_header(
+                        ui,
+                        "PRO SENSOR ENHANCEMENTS",
+                        Some("PixArt PAW3395 hardware features"),
                     );
-                    ui.add_space(4.0);
 
-                    // Motion Sync
                     ui.horizontal(|ui| {
-                        let sync_img = if self.config.motion_sync {
-                            egui::include_image!("../assets/Sensor/Open.png")
-                        } else {
-                            egui::include_image!("../assets/Sensor/Close.png")
-                        };
-                        if ui
-                            .add(egui::ImageButton::new(
-                                egui::Image::new(sync_img).max_height(16.0),
-                            ))
-                            .clicked()
-                        {
-                            self.config.motion_sync = !self.config.motion_sync;
-                        }
-                        ui.label("Motion Sync (Clock Synchronization)");
+                        modern_toggle(ui, &mut self.config.motion_sync);
+                        ui.label("Motion Sync (Clock sync with SPI reports)");
                     });
 
-                    ui.add_space(4.0);
+                    ui.add_space(6.0);
 
-                    // Angle Snapping (StraightLine)
                     ui.horizontal(|ui| {
-                        let snap_img = if self.config.angle_snapping {
-                            egui::include_image!("../assets/Sensor/Open.png")
-                        } else {
-                            egui::include_image!("../assets/Sensor/Close.png")
-                        };
-                        if ui
-                            .add(egui::ImageButton::new(
-                                egui::Image::new(snap_img).max_height(16.0),
-                            ))
-                            .clicked()
-                        {
-                            self.config.angle_snapping = !self.config.angle_snapping;
-                        }
-                        ui.label("Angle Snapping (Straight Line Correction)");
+                        modern_toggle(ui, &mut self.config.angle_snapping);
+                        ui.label("Angle Snapping (Line straightening)");
                     });
 
-                    ui.add_space(4.0);
+                    ui.add_space(6.0);
 
-                    // Ripple Control (RippeControl)
                     ui.horizontal(|ui| {
-                        let ripple_img = if self.config.ripple_control {
-                            egui::include_image!("../assets/Sensor/Open.png")
-                        } else {
-                            egui::include_image!("../assets/Sensor/Close.png")
-                        };
-                        if ui
-                            .add(egui::ImageButton::new(
-                                egui::Image::new(ripple_img).max_height(16.0),
-                            ))
-                            .clicked()
-                        {
-                            self.config.ripple_control = !self.config.ripple_control;
-                        }
-                        ui.label("Ripple Control (High DPI Smoothing)");
+                        modern_toggle(ui, &mut self.config.ripple_control);
+                        ui.label("Ripple Control (High-DPI smoothing >5000)");
                     });
                 });
             });
 
-            ui.add_space(18.0);
+            ui.add_space(16.0);
 
-            // Right Column: DPI Stages with PAW3395 Stepping and Add/Reduce buttons
+            // Right Column: DPI Stages
             ui.vertical(|ui| {
-                ui.heading(
-                    egui::RichText::new("DPI Stages (PixArt PAW3395)")
-                        .color(egui::Color32::from_rgb(0, 210, 255)),
+                section_header(
+                    ui,
+                    "DPI STAGES (PIXART PAW3395)",
+                    Some("Configure up to 5 stages from 50 to 26,000 DPI with step adjustments"),
                 );
-                ui.label("Configure up to 5 DPI stages (50 – 26,000 DPI):");
-                ui.add_space(8.0);
 
                 let default_colors = [
                     egui::Color32::from_rgb(255, 60, 60),   // Stage 1: Red
@@ -1114,25 +1300,26 @@ impl IcarusApp {
                         .copied()
                         .unwrap_or(egui::Color32::WHITE);
 
-                    ui.group(|ui| {
+                    modern_card(ui, |ui| {
+                        ui.set_width(420.0);
                         ui.horizontal(|ui| {
-                            // Active stage radio button
+                            // Active radio
                             if ui.radio(is_active_stage, "").clicked() {
                                 self.config.active_dpi_stage = i as u8;
                             }
 
-                            // Stage indicator color box
-                            let (rect, _response) = ui
+                            // Color chip
+                            let (rect, _) = ui
                                 .allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
-                            ui.painter().rect_filled(rect, 3.0, stage_color);
+                            ui.painter().circle_filled(rect.center(), 7.0, stage_color);
 
                             // Stage title
                             ui.label(
                                 egui::RichText::new(format!("Stage {}", i + 1))
-                                    .size(14.0)
+                                    .size(13.5)
                                     .strong()
                                     .color(if is_active_stage {
-                                        egui::Color32::from_rgb(0, 210, 255)
+                                        egui::Color32::from_rgb(0, 220, 255)
                                     } else {
                                         egui::Color32::WHITE
                                     }),
@@ -1140,8 +1327,8 @@ impl IcarusApp {
 
                             if is_active_stage {
                                 ui.label(
-                                    egui::RichText::new("ACTIVE")
-                                        .size(11.0)
+                                    egui::RichText::new(" ACTIVE ")
+                                        .size(10.5)
                                         .background_color(egui::Color32::from_rgb(0, 140, 220))
                                         .color(egui::Color32::WHITE)
                                         .strong(),
@@ -1151,27 +1338,23 @@ impl IcarusApp {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    ui.checkbox(&mut self.config.dpi_stages[i].enabled, "Enable");
+                                    modern_toggle(ui, &mut self.config.dpi_stages[i].enabled);
+                                    ui.label("Enabled:");
                                 },
                             );
                         });
 
                         ui.add_space(4.0);
 
-                        // DPI slider with Add/Reduce adjustment buttons
+                        // DPI Slider with Add and Reduce buttons
                         ui.horizontal(|ui| {
-                            // Reduce button (-50 DPI)
                             let red_btn = egui::ImageButton::new(
                                 egui::Image::new(egui::include_image!(
                                     "../assets/Sensor/Reduce.png"
                                 ))
                                 .max_height(14.0),
                             );
-                            if ui
-                                .add(red_btn)
-                                .on_hover_text("Decrease by 50 DPI")
-                                .clicked()
-                            {
+                            if ui.add(red_btn).on_hover_text("Decrease 50 DPI").clicked() {
                                 let cur = self.config.dpi_stages[i].dpi;
                                 self.config.dpi_stages[i].dpi = cur.saturating_sub(50).max(50);
                             }
@@ -1187,16 +1370,11 @@ impl IcarusApp {
                                 self.config.dpi_stages[i].dpi = snapped;
                             }
 
-                            // Add button (+50 DPI)
                             let add_btn = egui::ImageButton::new(
                                 egui::Image::new(egui::include_image!("../assets/Sensor/Add.png"))
                                     .max_height(14.0),
                             );
-                            if ui
-                                .add(add_btn)
-                                .on_hover_text("Increase by 50 DPI")
-                                .clicked()
-                            {
+                            if ui.add(add_btn).on_hover_text("Increase 50 DPI").clicked() {
                                 let cur = self.config.dpi_stages[i].dpi;
                                 self.config.dpi_stages[i].dpi = cur.saturating_add(50).min(26000);
                             }
@@ -1208,48 +1386,47 @@ impl IcarusApp {
         });
     }
 
-    /// Render Tab 3: Lighting and LED Effects with original ColorBoard banner and 14 individual color chips
+    /// Render Tab 3: Lighting and LED Effects with ColorBoard and 14 individual color chips
     fn render_lighting_tab(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            // Left Column: Lighting Mode and Timers
+            // Left Column: Lighting Mode and Sleep
             ui.vertical(|ui| {
                 ui.set_width(380.0);
 
-                ui.group(|ui| {
-                    ui.heading(
-                        egui::RichText::new("LED Effect Mode")
-                            .color(egui::Color32::from_rgb(0, 210, 255)),
+                modern_card(ui, |ui| {
+                    section_header(
+                        ui,
+                        "LIGHTING MODE",
+                        Some("Select dynamic illumination style for the mouse"),
                     );
-                    ui.label("Select DPI LED lighting style:");
-                    ui.add_space(8.0);
 
                     let modes = [
-                        (LedMode::Solid, "Solid", "Constant static illumination"),
-                        (LedMode::Breathing, "Breathing", "Pulsing glow animation"),
+                        (LedMode::Solid, "Solid", "Static continuous glow"),
+                        (LedMode::Breathing, "Breathing", "Smooth pulsing animation"),
                         (
                             LedMode::Neon,
-                            "Neon / Cycle",
-                            "Rainbow dynamic color transition",
+                            "Neon Spectrum",
+                            "Continuous rainbow color cycle",
                         ),
-                        (LedMode::Off, "Off", "Disable mouse lighting"),
+                        (LedMode::Off, "Off", "Turn off LED to conserve power"),
                     ];
 
                     for (mode, label, desc) in modes {
                         let is_active = self.config.dpi_led.mode == mode;
                         let btn = egui::Button::new(
                             egui::RichText::new(format!("{} — {}", label, desc))
-                                .size(12.5)
+                                .size(12.0)
                                 .color(if is_active {
                                     egui::Color32::WHITE
                                 } else {
-                                    egui::Color32::from_rgb(180, 180, 200)
+                                    egui::Color32::from_rgb(180, 190, 210)
                                 })
                                 .strong(),
                         )
                         .fill(if is_active {
-                            egui::Color32::from_rgb(0, 130, 200)
+                            egui::Color32::from_rgb(0, 140, 220)
                         } else {
-                            egui::Color32::from_rgb(32, 32, 42)
+                            egui::Color32::from_rgb(32, 38, 54)
                         })
                         .rounding(egui::Rounding::same(6.0))
                         .min_size(egui::vec2(340.0, 34.0));
@@ -1263,12 +1440,12 @@ impl IcarusApp {
 
                 ui.add_space(10.0);
 
-                ui.group(|ui| {
-                    ui.heading(
-                        egui::RichText::new("Brightness, Speed & Sleep")
-                            .color(egui::Color32::from_rgb(0, 210, 255)),
+                modern_card(ui, |ui| {
+                    section_header(
+                        ui,
+                        "BRIGHTNESS & SPEED",
+                        Some("Adjust illumination intensity and animation rate"),
                     );
-                    ui.add_space(4.0);
 
                     ui.label(format!("Brightness: {}", self.config.dpi_led.brightness));
                     ui.add(egui::Slider::new(
@@ -1289,7 +1466,7 @@ impl IcarusApp {
 
                     ui.add_space(6.0);
 
-                    ui.label("LED Idle Sleep Timer:");
+                    ui.label("LED Sleep Timer:");
                     let sleep_options = [
                         (10, "10 seconds"),
                         (30, "30 seconds"),
@@ -1307,7 +1484,7 @@ impl IcarusApp {
 
                     egui::ComboBox::from_id_salt("led_sleep_combo")
                         .selected_text(selected_label)
-                        .width(130.0)
+                        .width(140.0)
                         .show_ui(ui, |ui| {
                             for (val, label) in sleep_options {
                                 ui.selectable_value(&mut self.config.led_sleep_seconds, val, label);
@@ -1316,69 +1493,70 @@ impl IcarusApp {
                 });
             });
 
-            ui.add_space(18.0);
+            ui.add_space(16.0);
 
-            // Right Column: ColorBoard banner and 14 individual ColorA–ColorN swatch buttons
+            // Right Column: Color Swatches & RGB Tuning
             ui.vertical(|ui| {
-                ui.group(|ui| {
-                    ui.set_width(400.0);
-                    ui.heading(
-                        egui::RichText::new("LED Color Palette")
-                            .color(egui::Color32::from_rgb(0, 210, 255)),
+                modern_card(ui, |ui| {
+                    ui.set_width(410.0);
+                    section_header(
+                        ui,
+                        "COLOR PALETTE & CUSTOM RGB",
+                        Some("Choose preset colors or customize Red, Green, and Blue channels"),
                     );
 
-                    ui.add_space(4.0);
-
-                    // Original ColorBoard graphic banner
+                    // Original ColorBoard Graphic Banner
                     ui.add(
                         egui::Image::new(egui::include_image!("../assets/Light/ColorBoard.png"))
-                            .max_width(360.0),
+                            .max_width(380.0),
                     );
 
                     ui.add_space(8.0);
-                    ui.label("Click any preset swatch from the original software palette:");
-                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new("Quick Color Presets (14 Swatches):")
+                            .size(11.5)
+                            .color(egui::Color32::from_rgb(160, 170, 195)),
+                    );
+                    ui.add_space(4.0);
 
-                    // 14 Individual Reverse-Engineered Color Swatches (Row 1: A-G, Row 2: H-N)
+                    // Row 1: ColorA to ColorG
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
-
-                        // ColorA to ColorG
                         let swatches_row1 = [
                             (
                                 egui::include_image!("../assets/Light/ColorA.png"),
                                 Color::new(255, 0, 0),
-                                "Color A: Red",
+                                "Red",
                             ),
                             (
                                 egui::include_image!("../assets/Light/ColorB.png"),
                                 Color::new(0, 255, 255),
-                                "Color B: Cyan",
+                                "Cyan",
                             ),
                             (
                                 egui::include_image!("../assets/Light/ColorC.png"),
                                 Color::new(0, 255, 0),
-                                "Color C: Green",
+                                "Green",
                             ),
                             (
                                 egui::include_image!("../assets/Light/ColorD.png"),
                                 Color::new(255, 0, 255),
-                                "Color D: Magenta",
+                                "Magenta",
                             ),
                             (
                                 egui::include_image!("../assets/Light/ColorE.png"),
                                 Color::new(255, 255, 0),
-                                "Color E: Yellow",
+                                "Yellow",
                             ),
                             (
                                 egui::include_image!("../assets/Light/ColorF.png"),
                                 Color::new(255, 80, 0),
-                                "Color F: Orange",
+                                "Orange",
                             ),
                             (
                                 egui::include_image!("../assets/Light/ColorG.png"),
                                 Color::new(0, 0, 255),
-                                "Color G: Blue",
+                                "Blue",
                             ),
                         ];
 
@@ -1394,45 +1572,44 @@ impl IcarusApp {
 
                     ui.add_space(4.0);
 
+                    // Row 2: ColorH to ColorN
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
-
-                        // ColorH to ColorN
                         let swatches_row2 = [
                             (
                                 egui::include_image!("../assets/Light/ColorH.png"),
                                 Color::new(227, 0, 127),
-                                "Color H: Pink",
+                                "Pink",
                             ),
                             (
                                 egui::include_image!("../assets/Light/ColorI.png"),
                                 Color::new(46, 166, 223),
-                                "Color I: Sky",
+                                "Sky",
                             ),
                             (
                                 egui::include_image!("../assets/Light/ColorJ.png"),
                                 Color::new(96, 25, 133),
-                                "Color J: Purple",
+                                "Purple",
                             ),
                             (
                                 egui::include_image!("../assets/Light/ColorK.png"),
                                 Color::new(255, 255, 255),
-                                "Color K: White",
+                                "White",
                             ),
                             (
                                 egui::include_image!("../assets/Light/ColorL.png"),
                                 Color::new(139, 178, 36),
-                                "Color L: Lime",
+                                "Lime",
                             ),
                             (
                                 egui::include_image!("../assets/Light/ColorM.png"),
                                 Color::new(255, 155, 51),
-                                "Color M: Amber",
+                                "Amber",
                             ),
                             (
                                 egui::include_image!("../assets/Light/ColorN.png"),
                                 Color::new(208, 113, 173),
-                                "Color N: Orchid",
+                                "Orchid",
                             ),
                         ];
 
@@ -1446,10 +1623,15 @@ impl IcarusApp {
                         }
                     });
 
-                    ui.add_space(12.0);
-                    ui.label("Fine Tuning (Custom RGB Sliders):");
+                    ui.add_space(10.0);
+                    ui.label(
+                        egui::RichText::new("Custom RGB Sliders:")
+                            .size(12.0)
+                            .strong()
+                            .color(egui::Color32::WHITE),
+                    );
 
-                    // Red slider with Add/Reduce buttons
+                    // Red slider
                     ui.horizontal(|ui| {
                         let red_reduce = egui::ImageButton::new(
                             egui::Image::new(egui::include_image!("../assets/Light/Reduce.png"))
@@ -1459,10 +1641,12 @@ impl IcarusApp {
                             self.config.dpi_led.color.r =
                                 self.config.dpi_led.color.r.saturating_sub(5);
                         }
-
-                        ui.label("Red:  ");
+                        ui.label(
+                            egui::RichText::new("R:")
+                                .color(egui::Color32::from_rgb(255, 100, 100))
+                                .strong(),
+                        );
                         ui.add(egui::Slider::new(&mut self.config.dpi_led.color.r, 0..=255));
-
                         let red_add = egui::ImageButton::new(
                             egui::Image::new(egui::include_image!("../assets/Light/Add.png"))
                                 .max_height(14.0),
@@ -1473,7 +1657,7 @@ impl IcarusApp {
                         }
                     });
 
-                    // Green slider with Add/Reduce buttons
+                    // Green slider
                     ui.horizontal(|ui| {
                         let grn_reduce = egui::ImageButton::new(
                             egui::Image::new(egui::include_image!("../assets/Light/Reduce.png"))
@@ -1483,10 +1667,12 @@ impl IcarusApp {
                             self.config.dpi_led.color.g =
                                 self.config.dpi_led.color.g.saturating_sub(5);
                         }
-
-                        ui.label("Green:");
+                        ui.label(
+                            egui::RichText::new("G:")
+                                .color(egui::Color32::from_rgb(100, 255, 100))
+                                .strong(),
+                        );
                         ui.add(egui::Slider::new(&mut self.config.dpi_led.color.g, 0..=255));
-
                         let grn_add = egui::ImageButton::new(
                             egui::Image::new(egui::include_image!("../assets/Light/Add.png"))
                                 .max_height(14.0),
@@ -1497,7 +1683,7 @@ impl IcarusApp {
                         }
                     });
 
-                    // Blue slider with Add/Reduce buttons
+                    // Blue slider
                     ui.horizontal(|ui| {
                         let blu_reduce = egui::ImageButton::new(
                             egui::Image::new(egui::include_image!("../assets/Light/Reduce.png"))
@@ -1507,10 +1693,12 @@ impl IcarusApp {
                             self.config.dpi_led.color.b =
                                 self.config.dpi_led.color.b.saturating_sub(5);
                         }
-
-                        ui.label("Blue: ");
+                        ui.label(
+                            egui::RichText::new("B:")
+                                .color(egui::Color32::from_rgb(100, 180, 255))
+                                .strong(),
+                        );
                         ui.add(egui::Slider::new(&mut self.config.dpi_led.color.b, 0..=255));
-
                         let blu_add = egui::ImageButton::new(
                             egui::Image::new(egui::include_image!("../assets/Light/Add.png"))
                                 .max_height(14.0),
@@ -1523,7 +1711,7 @@ impl IcarusApp {
 
                     ui.add_space(8.0);
 
-                    // Preview chip with original PreviewColor asset
+                    // Color Preview Card
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::Image::new(egui::include_image!(
@@ -1531,61 +1719,64 @@ impl IcarusApp {
                             ))
                             .max_height(20.0),
                         );
-                        ui.label("Preview:");
+                        ui.label("Active Preview:");
                         let preview_col = egui::Color32::from_rgb(
                             self.config.dpi_led.color.r,
                             self.config.dpi_led.color.g,
                             self.config.dpi_led.color.b,
                         );
                         let (rect, _) =
-                            ui.allocate_exact_size(egui::vec2(80.0, 24.0), egui::Sense::hover());
+                            ui.allocate_exact_size(egui::vec2(70.0, 24.0), egui::Sense::hover());
                         ui.painter().rect_filled(rect, 4.0, preview_col);
-                        ui.label(format!(
-                            "#{:02X}{:02X}{:02X}",
-                            self.config.dpi_led.color.r,
-                            self.config.dpi_led.color.g,
-                            self.config.dpi_led.color.b
-                        ));
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "#{:02X}{:02X}{:02X}",
+                                self.config.dpi_led.color.r,
+                                self.config.dpi_led.color.g,
+                                self.config.dpi_led.color.b
+                            ))
+                            .monospace()
+                            .strong(),
+                        );
                     });
                 });
             });
         });
     }
 
-    /// Render Tab 4: Macro Manager with original Record, Stop, KeyDown, KeyUp, and Time icons
+    /// Render Tab 4: Macro Studio with Record, Stop, and Step Timeline
     fn render_macro_tab(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            // Left Column: Macro Library List
+            // Left Column: Macro Library
             ui.vertical(|ui| {
                 ui.set_width(320.0);
-                ui.group(|ui| {
-                    ui.heading(
-                        egui::RichText::new("Macro Library")
-                            .color(egui::Color32::from_rgb(0, 210, 255)),
-                    );
-                    ui.label("Stored macro sequences:");
-                    ui.add_space(6.0);
 
-                    // Macro sequence items in library
+                modern_card(ui, |ui| {
+                    section_header(
+                        ui,
+                        "MACRO LIBRARY",
+                        Some("Stored macro scripts and execution sequences"),
+                    );
+
                     let num_macros = self.config.macros.len();
                     for idx in 0..num_macros {
                         let is_selected = self.selected_macro_idx == idx;
                         let macro_name = self.config.macros[idx].name.clone();
 
                         let item_btn =
-                            egui::Button::new(egui::RichText::new(&macro_name).size(13.0).color(
+                            egui::Button::new(egui::RichText::new(&macro_name).size(12.5).color(
                                 if is_selected {
                                     egui::Color32::WHITE
                                 } else {
-                                    egui::Color32::from_rgb(190, 190, 210)
+                                    egui::Color32::from_rgb(180, 190, 210)
                                 },
                             ))
                             .fill(if is_selected {
-                                egui::Color32::from_rgb(0, 130, 200)
+                                egui::Color32::from_rgb(0, 140, 220)
                             } else {
-                                egui::Color32::from_rgb(32, 32, 42)
+                                egui::Color32::from_rgb(32, 38, 54)
                             })
-                            .min_size(egui::vec2(290.0, 30.0));
+                            .min_size(egui::vec2(285.0, 30.0));
 
                         if ui.add(item_btn).clicked() {
                             self.selected_macro_idx = idx;
@@ -1593,9 +1784,9 @@ impl IcarusApp {
                         ui.add_space(2.0);
                     }
 
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
 
-                    // New Macro ("NewHong") creation
+                    // Create New Macro
                     ui.horizontal(|ui| {
                         ui.text_edit_singleline(&mut self.new_macro_name);
                         if ui.button("➕ New").clicked() && !self.new_macro_name.trim().is_empty()
@@ -1628,7 +1819,7 @@ impl IcarusApp {
                         }
                     });
 
-                    // Delete Macro ("DeleteHong")
+                    // Delete Macro
                     if self.config.macros.len() > 1 && ui.button("🗑️ Delete Selected").clicked()
                     {
                         self.config.macros.remove(self.selected_macro_idx);
@@ -1640,14 +1831,10 @@ impl IcarusApp {
 
                 ui.add_space(10.0);
 
-                // Macro Repeat Mode ("ReNumber", "ReUntilLoose", "ReUntilClick")
+                // Repeat Mode Settings
                 if let Some(mac) = self.config.macros.get_mut(self.selected_macro_idx) {
-                    ui.group(|ui| {
-                        ui.heading(
-                            egui::RichText::new("Repeat Settings")
-                                .color(egui::Color32::from_rgb(0, 210, 255)),
-                        );
-                        ui.add_space(4.0);
+                    modern_card(ui, |ui| {
+                        section_header(ui, "REPEAT SETTINGS", Some("Execution behavior and loops"));
 
                         let mut mode_code = match mac.repeat_mode {
                             MacroRepeatMode::Times(_) => 0,
@@ -1700,14 +1887,14 @@ impl IcarusApp {
                 }
             });
 
-            ui.add_space(18.0);
+            ui.add_space(16.0);
 
-            // Right Column: Event List with Record / Stop buttons & timeline
+            // Right Column: Event Timeline
             ui.vertical(|ui| {
-                ui.group(|ui| {
-                    ui.set_width(420.0);
+                modern_card(ui, |ui| {
+                    ui.set_width(430.0);
 
-                    // Top Action Bar with original Record.png and Stop.png
+                    // Recording Action Bar
                     ui.horizontal(|ui| {
                         let record_img = egui::include_image!("../assets/Macro/Record.png");
                         let stop_img = egui::include_image!("../assets/Macro/Stop.png");
@@ -1736,7 +1923,7 @@ impl IcarusApp {
 
                         if self.is_recording_macro {
                             ui.label(
-                                egui::RichText::new("● REC")
+                                egui::RichText::new("● REC ACTIVE")
                                     .color(egui::Color32::from_rgb(231, 76, 60))
                                     .strong(),
                             );
@@ -1744,9 +1931,10 @@ impl IcarusApp {
                     });
 
                     ui.add_space(8.0);
-                    ui.heading(
-                        egui::RichText::new("Event Sequence")
-                            .color(egui::Color32::from_rgb(0, 210, 255)),
+                    section_header(
+                        ui,
+                        "EVENT SEQUENCE",
+                        Some("Step-by-step key actions and delay timings"),
                     );
 
                     let mut event_to_remove = None;
@@ -1789,7 +1977,7 @@ impl IcarusApp {
                                                         "Key Up:   {}",
                                                         event.key
                                                     ))
-                                                    .color(egui::Color32::from_rgb(180, 180, 200)),
+                                                    .color(egui::Color32::from_rgb(180, 190, 210)),
                                                 );
                                             }
                                             MacroEventType::Delay => {
@@ -1862,7 +2050,7 @@ impl IcarusApp {
                             mac.events.swap(idx, idx + 1);
                         }
 
-                        ui.add_space(6.0);
+                        ui.add_space(8.0);
 
                         // Manual event insertion tools
                         ui.horizontal(|ui| {
@@ -1901,15 +2089,15 @@ impl IcarusApp {
         });
     }
 
-    /// Render Tab 5: Settings, 2.4G Pairing Tool, Profile Import/Export, and Linux Udev Rules
+    /// Render Tab 5: Settings, 2.4G Dongle Pairing Tool, Profile Import/Export, and Linux Udev Rules
     fn render_settings_tab(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            // Left Column: 2.4G Pairing Tool & Profile Management
+            // Left Column: Pairing & Profiles
             ui.vertical(|ui| {
                 ui.set_width(380.0);
 
-                // 2.4G Wireless Pairing Tool (from original FormSetting / Pair.png)
-                ui.group(|ui| {
+                // 2.4G Dongle Pairing Card
+                modern_card(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::Image::new(egui::include_image!(
@@ -1917,13 +2105,17 @@ impl IcarusApp {
                             ))
                             .max_height(22.0),
                         );
-                        ui.heading(
-                            egui::RichText::new("2.4G Wireless Pairing Tool")
-                                .color(egui::Color32::from_rgb(0, 210, 255)),
+                        ui.label(
+                            egui::RichText::new("2.4G WIRELESS PAIRING")
+                                .strong()
+                                .color(egui::Color32::from_rgb(0, 220, 255)),
                         );
                     });
-
-                    ui.label("Pair your ICARUS V2 MINI mouse to its 2.4G/4G wireless dongle:");
+                    ui.label(
+                        egui::RichText::new("Pair mouse with 2.4G/4G wireless USB receiver")
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(150, 160, 185)),
+                    );
                     ui.add_space(8.0);
 
                     // Pairing status graphic
@@ -1936,7 +2128,7 @@ impl IcarusApp {
                             let pari_btn =
                                 egui::include_image!("../assets/FormSetting/PariButton.png");
                             ui.add(egui::Image::new(pari_btn).max_height(28.0));
-                            ui.label("Pairing in progress... Keep mouse close to dongle");
+                            ui.label("Pairing in progress... Keep mouse near dongle");
                         }
                         PairingState::Success => {
                             let succ_img =
@@ -1980,16 +2172,15 @@ impl IcarusApp {
                 ui.add_space(10.0);
 
                 // Profile Management
-                ui.group(|ui| {
-                    ui.heading(
-                        egui::RichText::new("Profile Import / Export")
-                            .color(egui::Color32::from_rgb(0, 210, 255)),
+                modern_card(ui, |ui| {
+                    section_header(
+                        ui,
+                        "PROFILE BACKUP (TOML)",
+                        Some("Save and restore mouse configurations to disk"),
                     );
-                    ui.label("Save or load custom mouse configuration files:");
-                    ui.add_space(8.0);
 
                     ui.horizontal(|ui| {
-                        if ui.button("💾 Export (TOML)").clicked() {
+                        if ui.button("💾 Export Profile (TOML)").clicked() {
                             match toml::to_string_pretty(&self.config) {
                                 Ok(toml_str) => {
                                     let file_path = "icarus-profile.toml";
@@ -2009,7 +2200,7 @@ impl IcarusApp {
                             }
                         }
 
-                        if ui.button("📂 Import (TOML)").clicked() {
+                        if ui.button("📂 Import Profile (TOML)").clicked() {
                             let file_path = "icarus-profile.toml";
                             match std::fs::read_to_string(file_path) {
                                 Ok(content) => match toml::from_str::<MouseConfig>(&content) {
@@ -2032,14 +2223,13 @@ impl IcarusApp {
 
                 ui.add_space(10.0);
 
-                // Udev Permissions Guide
-                ui.group(|ui| {
-                    ui.heading(
-                        egui::RichText::new("USB Permissions (Udev)")
-                            .color(egui::Color32::from_rgb(0, 210, 255)),
+                // Linux USB Permissions Guide
+                modern_card(ui, |ui| {
+                    section_header(
+                        ui,
+                        "LINUX USB ACCESS (UDEV)",
+                        Some("Allow non-root HID access without sudo"),
                     );
-                    ui.label("To communicate with the mouse without root/sudo:");
-                    ui.add_space(4.0);
 
                     ui.code("sudo cp 99-icarus-mouse.rules /etc/udev/rules.d/");
                     ui.code("sudo udevadm control --reload-rules && sudo udevadm trigger");
@@ -2064,34 +2254,58 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f510", MODE="0666"
                 });
             });
 
-            ui.add_space(18.0);
+            ui.add_space(16.0);
 
-            // Right Column: Hardware Overview & Reverse Engineering Architecture Details
+            // Right Column: Hardware & Firmware Specs
             ui.vertical(|ui| {
-                ui.group(|ui| {
-                    ui.set_width(400.0);
-                    ui.heading(
-                        egui::RichText::new("Hardware & Firmware Specs")
-                            .color(egui::Color32::from_rgb(0, 210, 255)),
+                modern_card(ui, |ui| {
+                    ui.set_width(410.0);
+                    section_header(
+                        ui,
+                        "HARDWARE ARCHITECTURE",
+                        Some("Reverse-engineered controller & sensor specifications"),
                     );
-                    ui.add_space(6.0);
 
-                    ui.label("Device:           ICARUS V2 MINI Wireless Gaming Mouse");
-                    ui.label("Sensor:           PixArt PAW3395 (26,000 DPI, 650 IPS, 50G)");
-                    ui.label("Mouse MCU:        Nordic nRF52840 (ARM Cortex-M4F @ 64MHz)");
-                    ui.label("1K Dongle MCU:    CX52650N (2.4GHz Wireless)");
-                    ui.label("4K Dongle MCU:    WCH CH32V305 (RISC-V High Speed)");
-                    ui.label("USB Vendor ID:    0x3554");
-                    ui.label("Wired PID:        0xF511 (USB Direct)");
-                    ui.label("2.4G PID:         0xF512 (Standard Dongle)");
-                    ui.label("4G PID:           0xF510 (High-Speed Dongle)");
-                    ui.label("HID Endpoint:     Interface 1 (Vendor Specific)");
-                    ui.label("Protocol Packet:  17 bytes (XOR Checksummed)");
-                    ui.label(format!("Firmware:         {}", self.firmware_version));
+                    let specs = [
+                        ("Device", "ICARUS V2 MINI Wireless Gaming Mouse"),
+                        (
+                            "Optical Sensor",
+                            "PixArt PAW3395 (26,000 DPI, 650 IPS, 50G)",
+                        ),
+                        ("Main MCU", "Nordic nRF52840 (ARM Cortex-M4F @ 64MHz)"),
+                        ("1K Wireless Dongle", "CX52650N (2.4GHz Wireless)"),
+                        ("4K High-Speed Dongle", "WCH CH32V305 (RISC-V High Speed)"),
+                        ("USB Vendor ID (VID)", "0x3554"),
+                        ("Wired PID", "0xF511 (USB Direct)"),
+                        ("2.4G Wireless PID", "0xF512 (Standard Dongle)"),
+                        ("4G Wireless PID", "0xF510 (High-Speed Dongle)"),
+                        ("HID Endpoint", "Interface 1 (Vendor Specific)"),
+                        ("Protocol Format", "17-byte Reports with XOR Checksum"),
+                    ];
+
+                    for (k, v) in specs {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("{}:", k))
+                                    .size(11.5)
+                                    .color(egui::Color32::from_rgb(140, 150, 175)),
+                            );
+                            ui.label(
+                                egui::RichText::new(v)
+                                    .size(11.5)
+                                    .strong()
+                                    .color(egui::Color32::WHITE),
+                            );
+                        });
+                        ui.add_space(2.0);
+                    }
+
+                    ui.separator();
+
+                    ui.label(format!("Firmware Version: {}", self.firmware_version));
                     ui.label(format!("Connection:       {}", self.connection_status));
-
                     if let Some(bat) = self.battery_level {
-                        ui.label(format!("Battery:          {}%", bat));
+                        ui.label(format!("Battery Status:   {}%", bat));
                     }
                 });
             });
@@ -2103,8 +2317,8 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f510", MODE="0666"
 pub fn run_gui() -> Result<(), eframe::Error> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([960.0, 660.0])
-            .with_min_inner_size([900.0, 600.0])
+            .with_inner_size([980.0, 680.0])
+            .with_min_inner_size([920.0, 620.0])
             .with_title("ICARUS V2 MINI — Mouse Configuration"),
         ..Default::default()
     };
