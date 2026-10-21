@@ -442,7 +442,7 @@ fn default_macros() -> Vec<MacroItem> {
 }
 
 /// Complete mouse configuration state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MouseConfig {
     /// Active profile (1 to 5)
     #[serde(default = "default_active_profile")]
