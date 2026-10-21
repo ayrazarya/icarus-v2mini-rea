@@ -1,12 +1,41 @@
-# icarus-v2mini — Native Linux Configuration Tool for ICARUS V2 MINI
+# ICARUS V2 MINI — Linux Driver & Native GUI
 
-A native, high-performance Linux CLI and configuration tool for the **ICARUS V2 MINI** gaming mouse, written in Rust.
+Native, high-performance Linux driver, configuration tool, and desktop GUI for the **ICARUS V2 MINI** ultralight gaming mouse, written from the ground up in Rust.
 
-Reverse-engineered directly from the official Windows driver (`ICARUS V2 MINI_v1.0.1.2_2024.10.28_setup.exe`). It communicates directly with the mouse via raw USB/HID on Linux **without Wine, Windows, or runtime dependencies**.
+Reverse-engineered directly from the official Windows vendor driver (`ICARUS V2 MINI_v1.0.1.2_setup.exe` & `HIDUsb.dll`). It communicates directly with the mouse and wireless receiver via raw USB/HID on Linux **without Wine, Windows, or heavy runtime dependencies**.
 
 ---
 
-## Hardware Specifications
+##  Features & Highlights
+
+- **Modern Native Desktop GUI**: Built using `egui` and `eframe`. Fluid 60fps interface with zero web-engine bloat (consumes <30MB RAM).
+- **100% DPI Accuracy (PixArt PAW3395)**: Uses the exact sensor register lookup table extracted from official driver headers (`driver_sensor.h`), eliminating DPI mismatch issues (e.g. 6500 DPI correctly maps to register `0x4D`, not a miscalculated linear value).
+- **Hardware-Accurate DPI Indicator Lamp**: The mouse LED is tied directly to the active DPI stage register (`0x2C + stage * 4`), composite packets (`0xA0`), and direct hardware registers (`0x4C..0x52`). Supports per-stage color customization, Esports presets, 14 reverse-engineered color chips, breathing, neon, solid, and off modes.
+- **Accurate 6-Button Physical Layout**:
+  - `1`: Left Click
+  - `2`: Right Click
+  - `3`: Middle Click / Scroll Wheel
+  - `4`: Forward Button (Front Side)
+  - `5`: Back Button (Rear Side)
+  - `6`: DPI Button (Underneath the mouse base)
+- **Advanced Sensor Tuning**:
+  - Polling Rate: 125 Hz, 250 Hz, 500 Hz, 1000 Hz
+  - Lift-Off Distance (LOD): 1mm (Low) / 2mm (High)
+  - Angle Snapping (Angle Straightening)
+  - Motion Sync
+  - Ripple Control (high-DPI jitter smoothing)
+  - Sensor Power Mode (Office vs. Performance)
+  - Debounce Filtering (0–20 ms)
+  - LED Sleep Idle Timer (10s – 5min, or Never)
+- **Real-Time Battery Monitoring**: Live battery percentage read directly from the 2.4G/4G wireless dongle.
+- **Dual Interface**:
+  - **Desktop GUI** for interactive calibration.
+  - **Fast CLI** for scripts, terminal setups, or automated profile switching.
+- **Profile Management**: Export and import complete mouse states to human-readable TOML files.
+
+---
+
+## 🖥️ Hardware Specifications
 
 | Component | Specification |
 |---|---|
@@ -14,101 +43,116 @@ Reverse-engineered directly from the official Windows driver (`ICARUS V2 MINI_v1
 | **Product ID (USB Wired)** | `0xF511` |
 | **Product ID (2.4G Wireless)** | `0xF512` |
 | **Product ID (4G Wireless)** | `0xF510` |
-| **Sensor** | PixArt PAW3395 (50 – 26,000 DPI) |
-| **Mouse MCU** | Nordic nRF52840 |
-| **2.4G Dongle MCU** | CX52650N |
-| **4G Dongle MCU** | WCH CH32V305 |
-| **HID Interface** | Interface 1 (Vendor-Specific HID, Report ID 0x07) |
+| **Optical Sensor** | PixArt PAW3395 (50 – 26,000 DPI) |
+| **Mouse MCU** | Nordic Semiconductor nRF52840 |
+| **2.4G Wireless Dongle** | CX52650N |
+| **4G Wireless Dongle** | WCH CH32V305 |
+| **HID Protocol** | Interface 1 (Vendor Specific HID, Report ID `0x07`, 17-byte payloads) |
 
 ---
 
-## Features
+## 🚀 Installation & Setup
 
-- **Device Information**: Query firmware version, active connection mode, polling rate, current DPI stage, LOD, angle snap, motion sync, debounce, and battery level.
-- **Polling Rate Configuration**: 125 Hz, 250 Hz, 500 Hz, 1000 Hz.
-- **DPI Configuration**:
-  - Cycle or set active DPI stage (1–8)
-  - Configure DPI values with PAW3395 sensor register translation (50–26,000 DPI)
-  - Set per-stage LED indicators
-- **Sensor Features**:
-  - Lift-Off Distance (LOD): 1mm (Low) / 2mm (High)
-  - Angle Snapping (Angle Straightening) toggle
-  - Motion Sync toggle
-  - Click Debounce filter (0–20 ms)
-- **LED Lighting Effects**:
-  - Modes: `Off`, `Solid`, `Breathing`
-  - Brightness control (0–10)
-  - Breathing speed control (1–10)
-  - Custom RGB colors
-- **Battery Status**: Check wireless battery percentage and visual charge bar.
-- **Profile Management**: Export current mouse settings to a human-readable TOML file or apply saved profiles.
-- **udev Rule Generator**: Integrated non-root permission setup.
+### 1. Build and Install via Cargo
 
----
-
-## Installation & Setup
-
-### 1. Build from Source
+Make sure you have Rust and development libraries installed (`libudev-dev` / `systemd-devel`):
 
 ```bash
-git clone https://github.com/your-username/icarus-v2mini-linux.git
+# Ubuntu / Debian
+sudo apt install -y build-essential libudev-dev pkg-config
+
+# Arch Linux / Manjaro
+sudo pacman -S --needed base-devel systemd
+
+# Fedora
+sudo dnf install -y gcc systemd-devel
+```
+
+Clone and install the release binary:
+
+```bash
+git clone https://github.com/ayrazarya/icarus-v2mini-linux.git
 cd icarus-v2mini-linux
-cargo build --release
+
+# Build and install directly to ~/.cargo/bin
+cargo install --path . --force
 ```
 
-The compiled binary will be located at `target/release/icarus-v2mini`.
+Ensure `~/.cargo/bin` is in your `$PATH` (typically added by default with `rustup`).
 
-### 2. Configure udev Permissions (Non-root Access)
+---
 
-By default, Linux requires root permissions to access raw HID devices. Run the built-in generator to install the udev rule:
+### 2. Configure udev Permissions (Non-Root Access)
 
-```bash
-# Generate and install the udev rule
-target/release/icarus-v2mini udev-rule | sudo tee /etc/udev/rules.d/99-icarus-mouse.rules
+Linux requires permission to communicate with vendor HID endpoints without `sudo`. Install the provided udev rules:
 
-# Reload udev rules
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
-
-Alternatively, copy the provided `99-icarus-mouse.rules`:
 ```bash
 sudo cp 99-icarus-mouse.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
+*(You can also generate the rule dynamically anytime via `icarus-v2mini udev-rule`)*
+
 ---
 
-## Usage Guide
+### 3. Desktop Application Shortcut
 
-### General Help & Device Status
+To launch the app directly from your application launcher (GNOME, KDE, Rofi, etc.):
 
 ```bash
-# View general help
-icarus-v2mini --help
+cp icarus-v2mini.desktop ~/.local/share/applications/
+update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
+```
 
-# List connected ICARUS devices (USB, 2.4G, 4G)
+---
+
+## 🎮 Launching the GUI
+
+Simply run without arguments or select **ICARUS V2 MINI** in your application launcher:
+
+```bash
+icarus-v2mini
+# Or explicitly:
+icarus-v2mini gui
+```
+
+### GUI Tabs:
+1. **Key Settings**: Remap any of the 6 physical buttons with interactive visual callout pins.
+2. **Sensor Tuning**: Adjust DPI stages (1–6), calibrate exact DPI values, assign custom per-stage colors, toggle LOD, Angle Snap, Motion Sync, and Polling Rate.
+3. **Lighting**: Set mode (Solid, Breathing, Neon, Off), brightness (0–10), breath speed (1–10), idle sleep timers, and select from Esports presets, ColorBoard swatches (A–N), or custom RGB sliders.
+4. **Misc**: Configure debounce time, ripple smoothing, and export/import profiles.
+
+---
+
+## 💻 CLI Usage
+
+All mouse settings can also be queried and changed instantly via command line:
+
+### Status & Hardware Information
+```bash
+# List all connected ICARUS receivers/devices
 icarus-v2mini list
 
-# Show full device info & current settings
+# Show full device status (polling rate, active DPI, battery, etc.)
 icarus-v2mini info
+
+# Read current battery level (wireless only)
+icarus-v2mini battery
 ```
 
 ### Polling Rate
-
 ```bash
-# Query current polling rate
+# Get current polling rate
 icarus-v2mini rate
 
-# Set polling rate to 1000 Hz (supported: 125, 250, 500, 1000)
+# Set polling rate (125, 250, 500, or 1000 Hz)
 icarus-v2mini rate 1000
 ```
 
-### DPI Settings
-
+### DPI Configuration
 ```bash
-# Display current DPI stage & sensor configuration
+# Query active stage & DPI range
 icarus-v2mini dpi
 
 # Switch to DPI stage 2 (1-indexed)
@@ -119,87 +163,75 @@ icarus-v2mini dpi --stage 2 --value 1600
 ```
 
 ### Sensor Tuning
-
 ```bash
-# Set Lift-Off Distance to 1mm (low) or 2mm (high)
+# Set Lift-Off Distance (low = 1mm, high = 2mm)
 icarus-v2mini lod low
 icarus-v2mini lod high
 
-# Enable or disable Angle Snapping
+# Angle Snapping (Angle Straightening)
 icarus-v2mini angle-snap on
 icarus-v2mini angle-snap off
 
-# Enable or disable Motion Sync
+# Motion Sync
 icarus-v2mini motion-sync on
 icarus-v2mini motion-sync off
 
-# Set button debounce filter (e.g. 4ms)
+# Button Debounce filter (0–20 ms)
 icarus-v2mini debounce 4
 ```
 
 ### LED Controls
-
 ```bash
-# Set DPI LED to solid white at full brightness
-icarus-v2mini led --mode solid --color "#FFFFFF" --brightness 10
+# Set active stage LED to solid cyan at full brightness
+icarus-v2mini led --mode solid --color "#00F0FF" --brightness 10
 
-# Set DPI LED to breathing cyan
-icarus-v2mini led --mode breathing --color "#00FFFF" --speed 5
+# Set breathing red with speed 5
+icarus-v2mini led --mode breathing --color "#FF2A2A" --speed 5
 
 # Turn off LED
 icarus-v2mini led --mode off
 ```
 
-### Battery Status
-
+### Profiles
 ```bash
-icarus-v2mini battery
+# Save current mouse settings to a profile
+icarus-v2mini save ~/my-profile.toml
+
+# Apply settings from a profile
+icarus-v2mini apply ~/my-profile.toml
 ```
-
-### Profile Import & Export
-
-```bash
-# Save current mouse settings to a TOML file
-icarus-v2mini save my-gaming-profile.toml
-
-# Apply settings from a TOML file
-icarus-v2mini apply my-gaming-profile.toml
-```
-
-See [examples/profile-default.toml](examples/profile-default.toml) for an example profile template.
 
 ---
 
-## Protocol Architecture
+## 🔬 Protocol & Reverse Engineering Architecture
 
-The ICARUS V2 MINI uses a 17-byte HID command packet (prepended by report ID `0x07` when sent across the wire).
+The mouse communicates using vendor HID report ID `0x07` with 17-byte command packets:
 
-### Packet Format (17 Bytes Payload)
+```
+[0x07] [Opcode] [Addr_Hi] [Addr_Lo] [Length] [Data 0..11] [Checksum]
+```
 
-| Offset | Field | Description |
-|---|---|---|
-| `0x00` | Opcode | `0x08` = Read, `0x07` = Write, `0x09` = Response |
-| `0x01` | Addr High | Sub-system / Register high byte |
-| `0x02` | Addr Low | Register low byte |
-| `0x03` | Length | Data payload length (1–12 bytes) |
-| `0x04..0x0F`| Data | Payload bytes (zero-padded) |
-| `0x10` | Checksum | Bitwise XOR of bytes `0x00..0x0F` |
+- **Read Opcode**: `0x08`
+- **Write Opcode**: `0x07`
+- **Response Opcode**: `0x09`
+- **Checksum Calculation**:
+  - Subsystem command checksum: `XOR(bytes[0..15])`
+  - Register write checksum (`0x4C..0x52`, `0xA0`, `0x2C`): `0x55 - value`
 
-### Key Register Map
-
-| Register (Hi, Lo) | Function | Description |
-|---|---|---|
-| `(0x01, 0x01)` | Report Rate | `0x08`=125Hz, `0x04`=250Hz, `0x02`=500Hz, `0x01`=1000Hz |
-| `(0x01, 0x02)` | Current DPI | Active stage index (0-based) |
-| `(0x01, 0x03)` | DPI LED | Mode, brightness, breath speed, RGB colors |
-| `(0x01, 0x04)` | LED Bar | Per-stage LED bar RGB colors |
-| `(0x01, 0x05)` | Battery | Wireless battery percentage (0–100%) |
-| `(0x01, 0x06)` | Version | Firmware version string |
-| `(0x02, 0x00)` | Flash All | Full configuration data map |
+### Crucial Register Map:
+- `0x0C + stage * 4`: DPI Stage X/Y sensor register (using PAW3395 table, labeled `SENSOR_3335` in vendor SDK)
+- `0x2C + stage * 4`: DPI Stage RGB color (`[R, G, B, 0x55 - (R + G + B)]`)
+- `0x4C`: DPI LED Mode register
+- `0x4E`: DPI LED Brightness register
+- `0x50`: DPI LED Breathing Speed register
+- `0xA0`: Composite LED packet (`[mode, bright, speed, R, G, B, chk]`)
+- `0x01, 0x01`: Report Rate (`0x01` = 1000Hz, `0x02` = 500Hz, `0x04` = 250Hz, `0x08` = 125Hz)
+- `0x01, 0x02`: Active DPI Stage Index
+- `0x01, 0x05`: Wireless Battery Percentage
 
 ---
 
-## Testing
+## 🧪 Testing
 
 Run the automated test suite:
 
@@ -207,8 +239,12 @@ Run the automated test suite:
 cargo test
 ```
 
+All 21 test suites test register serialization, SENSOR_3335 roundtrip conversions, response packet parsing, and profile file integrity.
+
 ---
 
-## License
+## 📄 License
 
-MIT License
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+
+Copyright (c) 2026 ayrazarya
