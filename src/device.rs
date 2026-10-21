@@ -25,6 +25,17 @@ const CONFIG_INTERFACE: i32 = 1;
 /// Read timeout in milliseconds
 const READ_TIMEOUT_MS: i32 = 500;
 
+/// Comprehensive battery and power reporting status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BatteryStatus {
+    /// Battery level percentage (0–100)
+    pub level: u8,
+    /// Whether the mouse is currently charging or powered via USB
+    pub is_charging: bool,
+    /// Battery voltage in millivolts
+    pub voltage_mv: u16,
+}
+
 /// Represents an open connection to an ICARUS V2 MINI mouse.
 pub struct IcarusDevice {
     device: hidapi::HidDevice,
@@ -219,12 +230,19 @@ impl IcarusDevice {
         Ok(resp.payload().first().copied().unwrap_or(0))
     }
 
-    /// Read battery level percentage (0–100).
-    pub fn read_battery_level(&self) -> Result<u8> {
+    /// Read comprehensive battery status including charging state and voltage.
+    pub fn read_battery_status(&self) -> Result<BatteryStatus> {
+        let is_usb = self.product_id == PID_USB;
         if let Ok(resp) = self.send_command(&Command::query_battery()) {
             let lvl = resp.battery_level();
+            let charging = is_usb || resp.is_charging();
+            let mv = resp.battery_voltage_mv();
             if lvl > 0 && lvl <= 100 {
-                return Ok(lvl);
+                return Ok(BatteryStatus {
+                    level: lvl,
+                    is_charging: charging,
+                    voltage_mv: mv,
+                });
             }
         }
         if let Ok(resp) = self.send_command(&Command::read(
@@ -234,10 +252,33 @@ impl IcarusDevice {
         )) {
             let lvl = resp.payload().first().copied().unwrap_or(0);
             if lvl > 0 && lvl <= 100 {
-                return Ok(lvl);
+                return Ok(BatteryStatus {
+                    level: lvl,
+                    is_charging: is_usb,
+                    voltage_mv: 0,
+                });
             }
         }
+        if is_usb {
+            return Ok(BatteryStatus {
+                level: 100,
+                is_charging: true,
+                voltage_mv: 4200,
+            });
+        }
         bail!("Battery level not reported yet")
+    }
+
+    /// Read battery level percentage (0–100).
+    pub fn read_battery_level(&self) -> Result<u8> {
+        self.read_battery_status().map(|s| s.level)
+    }
+
+    /// Read whether the mouse is actively charging or powered via USB.
+    pub fn is_charging(&self) -> bool {
+        self.read_battery_status()
+            .map(|s| s.is_charging)
+            .unwrap_or(self.product_id == PID_USB)
     }
 
     /// Read whether the mouse is actively online and connected.

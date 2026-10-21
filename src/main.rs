@@ -353,10 +353,19 @@ fn cmd_info(dev: &device::IcarusDevice) -> Result<()> {
         Err(e) => println!("  Firmware:      {} ({})", "?".red(), e),
     }
 
-    match dev.read_battery_level() {
-        Ok(level) => {
-            let bar = battery_bar(level);
-            println!("  Battery:       {} {}%", bar, level);
+    match dev.read_battery_status() {
+        Ok(status) => {
+            let bar = battery_bar(status.level);
+            let state_str = if status.is_charging {
+                " (⚡ Charging / USB)".cyan()
+            } else if status.level <= 10 {
+                " (🪫 Sekarat / Kritis!)".red().bold()
+            } else if status.level <= 20 {
+                " (⚠️ Lemah)".yellow()
+            } else {
+                "".normal()
+            };
+            println!("  Battery:       {} {}%{}", bar, status.level, state_str);
         }
         Err(_) => println!("  Battery:       {} (USB powered)", "N/A".dimmed()),
     }
@@ -729,9 +738,25 @@ fn cmd_debounce(dev: &device::IcarusDevice, ms: Option<u8>) -> Result<()> {
 }
 
 fn cmd_battery(dev: &device::IcarusDevice) -> Result<()> {
-    let level = dev.read_battery_level()?;
-    let bar = battery_bar(level);
-    println!("Battery: {} {}%", bar, level);
+    let status = dev.read_battery_status()?;
+    let bar = battery_bar(status.level);
+    let state_str = if status.is_charging {
+        " [⚡ Charging / USB Mode]".cyan().bold()
+    } else if status.level <= 10 {
+        " [🪫 Sekarat / Kritis!]".red().bold()
+    } else if status.level <= 20 {
+        " [⚠️ Baterai Lemah]".yellow().bold()
+    } else {
+        "".normal()
+    };
+    println!("Battery: {} {}%{}", bar, status.level, state_str);
+    if status.voltage_mv > 0 {
+        println!(
+            "Voltage: {:.2} V ({} mV)",
+            status.voltage_mv as f32 / 1000.0,
+            status.voltage_mv
+        );
+    }
     Ok(())
 }
 

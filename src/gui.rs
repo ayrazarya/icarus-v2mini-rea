@@ -126,8 +126,14 @@ pub struct IcarusApp {
     status: Option<(String, bool, Instant)>,
     /// Detected firmware version
     firmware_version: String,
-    /// Battery level percentage (if wireless)
+    /// Battery level percentage (if wireless or USB)
     battery_level: Option<u8>,
+    /// Whether the battery is actively charging or powered via USB
+    is_charging: bool,
+    /// Battery voltage in millivolts
+    battery_voltage_mv: Option<u16>,
+    /// Last battery poll timestamp
+    last_battery_poll: Instant,
     /// Connection status text
     connection_status: String,
     /// Whether connection is wireless
@@ -172,6 +178,9 @@ impl IcarusApp {
             status: None,
             firmware_version: "Unknown".into(),
             battery_level: None,
+            is_charging: false,
+            battery_voltage_mv: None,
+            last_battery_poll: Instant::now(),
             connection_status: "Disconnected (Offline Mode)".into(),
             is_wireless: false,
             is_device_online: false,
@@ -262,10 +271,18 @@ impl IcarusApp {
                     );
                 } else {
                     self.connection_status = format!("Connected ({})", dev.connection);
-                    if let Ok(b) = dev.read_battery_level() {
-                        self.battery_level = Some(b);
-                    } else if self.battery_level.is_none() {
+                    if let Ok(status) = dev.read_battery_status() {
+                        self.battery_level = Some(status.level);
+                        self.is_charging = status.is_charging;
+                        self.battery_voltage_mv = if status.voltage_mv > 0 {
+                            Some(status.voltage_mv)
+                        } else {
+                            None
+                        };
+                    } else if !self.is_wireless {
                         self.battery_level = Some(100);
+                        self.is_charging = true;
+                        self.battery_voltage_mv = Some(4200);
                     }
                     self.set_status("Connected to ICARUS V2 MINI", true);
                 }
@@ -288,6 +305,8 @@ impl IcarusApp {
                 self.device = None;
                 self.connection_status = "Disconnected (Offline Mode)".into();
                 self.battery_level = None;
+                self.is_charging = false;
+                self.battery_voltage_mv = None;
                 self.is_wireless = false;
                 self.is_device_online = false;
             }
@@ -339,7 +358,13 @@ impl IcarusApp {
                 Ok(cfg) => {
                     self.config = cfg.clone();
                     self.synced_config = cfg;
-                    self.battery_level = dev.read_battery_level().ok().filter(|&b| b > 0);
+                    if let Ok(status) = dev.read_battery_status() {
+                        self.battery_level = Some(status.level);
+                        self.is_charging = status.is_charging;
+                        if status.voltage_mv > 0 {
+                            self.battery_voltage_mv = Some(status.voltage_mv);
+                        }
+                    }
                     self.set_status("Configuration loaded from mouse!", true);
                 }
                 Err(e) => self.set_status(format!("Failed to read from mouse: {}", e), false),
@@ -352,6 +377,25 @@ impl IcarusApp {
 
 impl eframe::App for IcarusApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Periodic battery status polling every 4 seconds when device is connected
+        if self.last_battery_poll.elapsed() >= Duration::from_secs(4) {
+            self.last_battery_poll = Instant::now();
+            if let Some(ref dev) = self.device
+                && let Ok(status) = dev.read_battery_status()
+            {
+                self.battery_level = Some(status.level);
+                self.is_charging = status.is_charging;
+                if status.voltage_mv > 0 {
+                    self.battery_voltage_mv = Some(status.voltage_mv);
+                }
+            }
+        }
+
+        // Repaint animation when charging or when battery is critical (for glowing or pulsing warnings)
+        if self.is_charging || self.battery_level.is_some_and(|b| b <= 15) {
+            ctx.request_repaint_after(Duration::from_millis(500));
+        }
+
         // Update simulated pairing state if in progress
         if self.pairing_state == PairingState::Pairing
             && let Some(start) = self.pairing_start
@@ -474,63 +518,191 @@ impl eframe::App for IcarusApp {
 
                         ui.add_space(8.0);
 
-                        // Battery Indicator Pill
+                        // Battery Indicator Pill with multi-state icons and colors (Charging/USB, Normal, Lemah, Sekarat)
                         if let Some(battery) = self.battery_level {
-                            let (bg_color, fg_color, bar_color) = if battery > 50 {
+                            let is_charging = self.is_charging;
+                            let is_critical = battery <= 10 && !is_charging;
+                            let is_low = battery <= 20 && !is_charging && !is_critical;
+                            let pulse = (self.start_time.elapsed().as_millis() % 900) < 450;
+
+                            let (bg_color, stroke_color, fg_color, bar_color, label_text, pill_width, tooltip_title, tooltip_desc) = if is_charging {
+                                let label = if !self.is_wireless {
+                                    format!("⚡ {}% USB", battery)
+                                } else {
+                                    format!("⚡ {}% Charging", battery)
+                                };
                                 (
-                                    egui::Color32::from_rgb(240, 253, 244),
-                                    egui::Color32::from_rgb(22, 163, 74),
-                                    egui::Color32::from_rgb(34, 197, 94),
+                                    egui::Color32::from_rgb(240, 249, 255),
+                                    egui::Color32::from_rgb(56, 189, 248),
+                                    egui::Color32::from_rgb(2, 132, 199),
+                                    egui::Color32::from_rgb(2, 132, 199),
+                                    label,
+                                    124.0,
+                                    "Baterai Terisi • Mode USB (Dicas)",
+                                    "Mouse sedang terhubung kabel USB dan mengisi daya baterai.",
                                 )
-                            } else if battery > 20 {
+                            } else if is_critical {
+                                (
+                                    if pulse {
+                                        egui::Color32::from_rgb(254, 202, 202)
+                                    } else {
+                                        egui::Color32::from_rgb(254, 242, 242)
+                                    },
+                                    egui::Color32::from_rgb(220, 38, 38),
+                                    egui::Color32::from_rgb(153, 27, 27),
+                                    if pulse {
+                                        egui::Color32::from_rgb(220, 38, 38)
+                                    } else {
+                                        egui::Color32::TRANSPARENT
+                                    },
+                                    format!("🪫 {}% Sekarat!", battery),
+                                    134.0,
+                                    "🚨 PERINGATAN: Baterai Sekarat!",
+                                    "Daya baterai hampir habis (≤ 10%). Segera hubungkan kabel USB agar mouse tidak mati mendadak.",
+                                )
+                            } else if is_low {
+                                (
+                                    egui::Color32::from_rgb(254, 242, 242),
+                                    egui::Color32::from_rgb(248, 113, 113),
+                                    egui::Color32::from_rgb(185, 28, 28),
+                                    egui::Color32::from_rgb(239, 68, 68),
+                                    format!("⚠️ {}% Lemah", battery),
+                                    122.0,
+                                    "⚠️ Perhatian: Baterai Lemah",
+                                    "Daya baterai tersisa rendah (≤ 20%). Disarankan untuk segera mengisi daya.",
+                                )
+                            } else if battery <= 50 {
                                 (
                                     egui::Color32::from_rgb(254, 243, 199),
+                                    egui::Color32::from_rgb(245, 158, 11),
                                     egui::Color32::from_rgb(180, 83, 9),
                                     egui::Color32::from_rgb(245, 158, 11),
+                                    format!("{}%", battery),
+                                    84.0,
+                                    "Baterai Sedang",
+                                    "Daya baterai mencukupi untuk penggunaan nirkabel normal.",
                                 )
                             } else {
                                 (
-                                    egui::Color32::from_rgb(254, 242, 242),
-                                    egui::Color32::from_rgb(220, 38, 38),
-                                    egui::Color32::from_rgb(239, 68, 68),
+                                    egui::Color32::from_rgb(240, 253, 244),
+                                    egui::Color32::from_rgb(34, 197, 94),
+                                    egui::Color32::from_rgb(21, 128, 61),
+                                    egui::Color32::from_rgb(34, 197, 94),
+                                    format!("{}%", battery),
+                                    84.0,
+                                    "Baterai Optimal",
+                                    "Daya baterai dalam kondisi prima dan terisi aman.",
                                 )
                             };
 
-                            let (pill_rect, _) = ui
-                                .allocate_exact_size(egui::vec2(104.0, 28.0), egui::Sense::hover());
+                            let (pill_rect, pill_resp) = ui
+                                .allocate_exact_size(egui::vec2(pill_width, 28.0), egui::Sense::hover());
                             ui.painter().rect_filled(pill_rect, 6.0, bg_color);
                             ui.painter().rect_stroke(
                                 pill_rect,
                                 6.0,
-                                egui::Stroke::new(1.0_f32, bar_color),
+                                egui::Stroke::new(if is_critical { 1.5_f32 } else { 1.0_f32 }, stroke_color),
                             );
 
-                            // Mini progress bar inside the pill
-                            let bar_width = 24.0;
-                            let bar_height = 8.0;
-                            let bar_rect = egui::Rect::from_min_size(
-                                egui::pos2(pill_rect.left() + 8.0, pill_rect.center().y - 4.0),
-                                egui::vec2(bar_width, bar_height),
+                            // Vector Battery Casing Icon
+                            let bat_x = pill_rect.left() + 7.0;
+                            let bat_y = pill_rect.center().y - 6.0;
+                            let bat_w = 20.0;
+                            let bat_h = 12.0;
+                            let body_rect = egui::Rect::from_min_size(
+                                egui::pos2(bat_x, bat_y),
+                                egui::vec2(bat_w, bat_h),
                             );
-                            ui.painter().rect_filled(
-                                bar_rect,
+                            ui.painter().rect_stroke(
+                                body_rect,
                                 2.0,
-                                egui::Color32::from_rgb(226, 232, 240),
+                                egui::Stroke::new(1.2_f32, stroke_color),
                             );
-                            let fill_w = bar_width * (battery.min(100) as f32 / 100.0);
-                            let fill_rect = egui::Rect::from_min_size(
-                                bar_rect.min,
-                                egui::vec2(fill_w, bar_height),
-                            );
-                            ui.painter().rect_filled(fill_rect, 2.0, bar_color);
 
+                            // Terminal nipple on positive pole
+                            let nub_rect = egui::Rect::from_min_size(
+                                egui::pos2(bat_x + bat_w + 1.0, bat_y + 3.5),
+                                egui::vec2(2.0, 5.0),
+                            );
+                            ui.painter().rect_filled(nub_rect, 1.0, stroke_color);
+
+                            // Interior content of the battery icon
+                            if is_charging {
+                                // Interior charging fill
+                                let fill_w = (bat_w - 4.0) * (battery.min(100) as f32 / 100.0);
+                                if fill_w > 1.0 {
+                                    let fill_rect = egui::Rect::from_min_size(
+                                        egui::pos2(bat_x + 2.0, bat_y + 2.0),
+                                        egui::vec2(fill_w, bat_h - 4.0),
+                                    );
+                                    ui.painter().rect_filled(
+                                        fill_rect,
+                                        1.0,
+                                        egui::Color32::from_rgba_unmultiplied(2, 132, 199, 75),
+                                    );
+                                }
+
+                                // Crisp vector Lightning Bolt (⚡)
+                                let cx = body_rect.center().x;
+                                let cy = body_rect.center().y;
+                                let bolt_pts = vec![
+                                    egui::pos2(cx + 0.5, cy - 4.5),
+                                    egui::pos2(cx - 3.0, cy + 0.5),
+                                    egui::pos2(cx - 0.5, cy + 0.5),
+                                    egui::pos2(cx - 1.5, cy + 4.5),
+                                    egui::pos2(cx + 3.0, cy - 0.5),
+                                    egui::pos2(cx + 0.5, cy - 0.5),
+                                ];
+                                ui.painter().add(egui::Shape::convex_polygon(
+                                    bolt_pts,
+                                    egui::Color32::from_rgb(2, 132, 199),
+                                    egui::Stroke::new(0.5_f32, egui::Color32::WHITE),
+                                ));
+                            } else {
+                                // Progressive battery fill
+                                let max_fill = bat_w - 4.0;
+                                let fill_w = max_fill * (battery.min(100) as f32 / 100.0);
+                                if fill_w >= 1.5 {
+                                    let fill_rect = egui::Rect::from_min_size(
+                                        egui::pos2(bat_x + 2.0, bat_y + 2.0),
+                                        egui::vec2(fill_w, bat_h - 4.0),
+                                    );
+                                    ui.painter().rect_filled(fill_rect, 1.0, bar_color);
+                                }
+                            }
+
+                            // Text Label
                             ui.painter().text(
-                                egui::pos2(pill_rect.left() + 38.0, pill_rect.center().y),
+                                egui::pos2(bat_x + bat_w + 8.0, pill_rect.center().y),
                                 egui::Align2::LEFT_CENTER,
-                                format!("{}%", battery),
-                                egui::FontId::proportional(12.0),
+                                label_text,
+                                egui::FontId::proportional(11.5),
                                 fg_color,
                             );
+
+                            // Rich Interactive Tooltip on Hover
+                            pill_resp.on_hover_ui(|ui| {
+                                ui.set_max_width(260.0);
+                                ui.label(egui::RichText::new(tooltip_title).strong().color(fg_color));
+                                ui.add_space(2.0);
+                                ui.label(
+                                    egui::RichText::new(tooltip_desc)
+                                        .size(11.0)
+                                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                                );
+                                if let Some(mv) = self.battery_voltage_mv {
+                                    ui.add_space(2.0);
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "Voltase Baterai: {:.2} V ({} mV)",
+                                            mv as f32 / 1000.0,
+                                            mv
+                                        ))
+                                        .size(10.5)
+                                        .color(egui::Color32::from_rgb(148, 163, 184)),
+                                    );
+                                }
+                            });
 
                             ui.add_space(8.0);
                         }
@@ -3240,7 +3412,16 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f510", MODE="0666"
                                     .strong()
                                     .color(egui::Color32::from_rgb(71, 85, 105)),
                             );
-                            ui.label(format!("{}%", bat));
+                            let status_str = if self.is_charging {
+                                format!("{}% (Charging / USB Mode)", bat)
+                            } else if bat <= 10 {
+                                format!("{}% (Sekarat / Kritis!)", bat)
+                            } else if bat <= 20 {
+                                format!("{}% (Lemah)", bat)
+                            } else {
+                                format!("{}%", bat)
+                            };
+                            ui.label(status_str);
                         });
                     }
                 });
