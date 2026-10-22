@@ -158,6 +158,47 @@ pub struct IcarusApp {
     new_key_input: String,
     /// Buffer for inserting delay ms
     new_delay_ms: u32,
+    /// Editable text buffers for each DPI stage free-text input
+    dpi_text_inputs: Vec<String>,
+    /// Custom names for profiles 1 to 5
+    profile_names: [String; 5],
+    /// Whether inline profile renaming is active
+    is_renaming_profile: bool,
+    /// Temporary buffer for profile rename
+    profile_rename_buf: String,
+    /// Click and debounce test state
+    test_clicks_count: u32,
+    test_last_click_time: Option<Instant>,
+    test_last_click_delta_ms: Option<u64>,
+    test_double_click_detected: bool,
+    test_recent_clicks: Vec<Instant>,
+    test_last_button_name: String,
+    /// Profile file path for import/export
+    profile_custom_path: String,
+    /// Auto-apply lighting changes in real-time
+    auto_apply_lighting: bool,
+}
+
+/// Helper to trigger native Linux file dialog via zenity if available
+fn pick_file_zenity(save: bool, default_name: &str) -> Option<String> {
+    let mut cmd = std::process::Command::new("zenity");
+    cmd.arg("--file-selection");
+    if save {
+        cmd.arg("--save").arg("--confirm-overwrite");
+    }
+    cmd.arg("--file-filter=TOML Profile (*.toml) | *.toml");
+    cmd.arg("--file-filter=All Files (*) | *");
+    if !default_name.is_empty() {
+        cmd.arg(format!("--filename={}", default_name));
+    }
+    let output = cmd.output().ok()?;
+    if output.status.success() {
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !path.is_empty() {
+            return Some(path);
+        }
+    }
+    None
 }
 
 impl IcarusApp {
@@ -168,7 +209,24 @@ impl IcarusApp {
         // Configure clean white light gaming theme
         Self::apply_theme(&cc.egui_ctx);
 
+        // Register system fallback font if available for comprehensive unicode coverage
+        let mut fonts = egui::FontDefinitions::default();
+        if let Ok(font_bytes) = std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf") {
+            fonts
+                .font_data
+                .insert("dejavu".to_owned(), egui::FontData::from_owned(font_bytes));
+            if let Some(prop) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+                prop.push("dejavu".to_owned());
+            }
+        }
+        cc.egui_ctx.set_fonts(fonts);
+
         let default_cfg = MouseConfig::default();
+        let dpi_text_inputs = default_cfg
+            .dpi_stages
+            .iter()
+            .map(|s| s.dpi.to_string())
+            .collect();
 
         let mut app = Self {
             config: default_cfg.clone(),
@@ -193,6 +251,24 @@ impl IcarusApp {
             new_macro_name: String::new(),
             new_key_input: "Space".into(),
             new_delay_ms: 20,
+            dpi_text_inputs,
+            profile_names: [
+                "Default".into(),
+                "Gaming".into(),
+                "FPS / Esports".into(),
+                "MOBA".into(),
+                "Work / Daily".into(),
+            ],
+            is_renaming_profile: false,
+            profile_rename_buf: String::new(),
+            test_clicks_count: 0,
+            test_last_click_time: None,
+            test_last_click_delta_ms: None,
+            test_double_click_detected: false,
+            test_recent_clicks: Vec::new(),
+            test_last_button_name: "None".into(),
+            profile_custom_path: "icarus-profile.toml".into(),
+            auto_apply_lighting: true,
         };
 
         app.refresh_device();
@@ -210,9 +286,8 @@ impl IcarusApp {
 
         visuals.override_text_color = Some(egui::Color32::from_rgb(15, 23, 42));
 
-        visuals.selection.bg_fill = egui::Color32::from_rgb(2, 132, 199);
-        visuals.selection.stroke =
-            egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(14, 165, 233));
+        visuals.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(2, 132, 199, 60);
+        visuals.selection.stroke = egui::Stroke::NONE;
 
         visuals.slider_trailing_fill = true;
 
@@ -373,10 +448,52 @@ impl IcarusApp {
             self.refresh_device();
         }
     }
+
+    /// Apply active lighting configuration directly to physical mouse in real time
+    pub fn apply_lighting_to_device(&mut self) {
+        if let Some(ref dev) = self.device {
+            let _ = dev.set_dpi_led(&self.config.dpi_led);
+            let active_idx = self.config.active_dpi_stage;
+            let _ = dev.set_dpi_stage_color(active_idx, self.config.dpi_led.color);
+        }
+    }
 }
 
 impl eframe::App for IcarusApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Global Keyboard Shortcuts (Ctrl+S, Ctrl+R, Esc, 1..5 / Ctrl+1..5)
+        let is_text_focused = ctx.memory(|m| m.focused().is_some());
+        ctx.input(|i| {
+            if i.modifiers.command && i.key_pressed(egui::Key::S) {
+                self.apply_to_device();
+            }
+            if i.modifiers.command && i.key_pressed(egui::Key::R) {
+                self.read_from_device();
+            }
+            if i.key_pressed(egui::Key::Escape) {
+                ctx.memory_mut(|m| {
+                    if let Some(id) = m.focused() {
+                        m.surrender_focus(id);
+                    }
+                });
+                self.is_renaming_profile = false;
+            }
+            let ctrl = i.modifiers.command;
+            if ctrl || !is_text_focused {
+                if i.key_pressed(egui::Key::Num1) {
+                    self.active_tab = Tab::Buttons;
+                } else if i.key_pressed(egui::Key::Num2) {
+                    self.active_tab = Tab::Sensor;
+                } else if i.key_pressed(egui::Key::Num3) {
+                    self.active_tab = Tab::Lighting;
+                } else if i.key_pressed(egui::Key::Num4) {
+                    self.active_tab = Tab::Macro;
+                } else if i.key_pressed(egui::Key::Num5) {
+                    self.active_tab = Tab::Settings;
+                }
+            }
+        });
+
         // Periodic battery status polling every 4 seconds when device is connected
         if self.last_battery_poll.elapsed() >= Duration::from_secs(4) {
             self.last_battery_poll = Instant::now();
@@ -446,7 +563,7 @@ impl eframe::App for IcarusApp {
 
                     ui.add_space(24.0);
 
-                    // Compact Profile Dropdown Selector (Profiles 1 to 5)
+                    // Compact Profile Dropdown Selector with Custom Renaming
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 6.0;
                         ui.label(
@@ -456,39 +573,117 @@ impl eframe::App for IcarusApp {
                                 .strong(),
                         );
 
-                        let mut selected_profile = self.config.active_profile;
-                        let prev_profile = selected_profile;
-                        egui::ComboBox::from_id_salt("header_profile_dropdown")
-                            .selected_text(
-                                egui::RichText::new(format!("Profile {}", selected_profile))
-                                    .size(12.0)
-                                    .strong()
-                                    .color(egui::Color32::from_rgb(15, 23, 42)),
-                            )
-                            .width(100.0)
-                            .show_ui(ui, |ui| {
-                                for p in 1..=5 {
-                                    let is_active = p == selected_profile;
-                                    let label = if is_active {
-                                        egui::RichText::new(format!("Profile {}", p))
-                                            .size(12.0)
-                                            .strong()
-                                            .color(egui::Color32::WHITE)
-                                    } else {
-                                        egui::RichText::new(format!("Profile {}", p))
-                                            .size(12.0)
-                                            .color(egui::Color32::from_rgb(30, 41, 59))
-                                    };
-                                    ui.selectable_value(&mut selected_profile, p, label);
-                                }
-                            });
+                        let cur_profile = self.config.active_profile as usize;
+                        let cur_name = self
+                            .profile_names
+                            .get(cur_profile.saturating_sub(1))
+                            .cloned()
+                            .unwrap_or_else(|| format!("Profile {}", cur_profile));
 
-                        if selected_profile != prev_profile {
-                            self.config.active_profile = selected_profile;
-                            self.set_status(
-                                format!("Switched to Profile {}", selected_profile),
-                                true,
-                            );
+                        if self.is_renaming_profile {
+                            let text_edit = egui::TextEdit::singleline(&mut self.profile_rename_buf)
+                                .desired_width(120.0);
+                            let r_resp = ui.add(text_edit);
+                            r_resp.request_focus();
+
+                            let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                            let save_btn = egui::Button::new(
+                                egui::RichText::new("Save")
+                                    .size(11.0)
+                                    .strong()
+                                    .color(egui::Color32::WHITE),
+                            )
+                            .fill(egui::Color32::from_rgb(2, 132, 199))
+                            .rounding(egui::Rounding::same(4.0));
+
+                            if ui.add(save_btn).clicked() || enter {
+                                let idx = self.config.active_profile as usize - 1;
+                                if idx < self.profile_names.len()
+                                    && !self.profile_rename_buf.trim().is_empty()
+                                {
+                                    self.profile_names[idx] =
+                                        self.profile_rename_buf.trim().to_string();
+                                    self.set_status(
+                                        format!("Profile {} renamed to '{}'", idx + 1, self.profile_names[idx]),
+                                        true,
+                                    );
+                                }
+                                self.is_renaming_profile = false;
+                            }
+
+                            let cancel_btn = egui::Button::new(
+                                egui::RichText::new("Cancel")
+                                    .size(11.0)
+                                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                            )
+                            .fill(egui::Color32::from_rgb(241, 245, 249))
+                            .rounding(egui::Rounding::same(4.0));
+
+                            if ui.add(cancel_btn).clicked()
+                                || ui.input(|i| i.key_pressed(egui::Key::Escape))
+                            {
+                                self.is_renaming_profile = false;
+                            }
+                        } else {
+                            let mut selected_profile = self.config.active_profile;
+                            let prev_profile = selected_profile;
+                            egui::ComboBox::from_id_salt("header_profile_dropdown")
+                                .selected_text(
+                                    egui::RichText::new(format!("P{}: {}", selected_profile, cur_name))
+                                        .size(12.0)
+                                        .strong()
+                                        .color(egui::Color32::from_rgb(15, 23, 42)),
+                                )
+                                .width(135.0)
+                                .show_ui(ui, |ui| {
+                                    for p in 1..=5u8 {
+                                        let name = &self.profile_names[(p - 1) as usize];
+                                        let is_active = p == selected_profile;
+                                        let label = if is_active {
+                                            egui::RichText::new(format!("P{}: {}", p, name))
+                                                .size(12.0)
+                                                .strong()
+                                                .color(egui::Color32::from_rgb(2, 132, 199))
+                                        } else {
+                                            egui::RichText::new(format!("P{}: {}", p, name))
+                                                .size(12.0)
+                                                .color(egui::Color32::from_rgb(30, 41, 59))
+                                        };
+                                        ui.selectable_value(&mut selected_profile, p, label);
+                                    }
+                                });
+
+                            if selected_profile != prev_profile {
+                                self.config.active_profile = selected_profile;
+                                self.set_status(
+                                    format!(
+                                        "Switched to Profile {} ({})",
+                                        selected_profile,
+                                        self.profile_names[selected_profile as usize - 1]
+                                    ),
+                                    true,
+                                );
+                            }
+
+                            // Clean, readable Rename button
+                            let rename_btn = egui::Button::new(
+                                egui::RichText::new("Rename")
+                                    .size(11.0)
+                                    .strong()
+                                    .color(egui::Color32::from_rgb(2, 132, 199)),
+                            )
+                            .fill(egui::Color32::from_rgb(240, 249, 255))
+                            .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(186, 230, 253)))
+                            .rounding(egui::Rounding::same(4.0));
+
+                            if ui
+                                .add(rename_btn)
+                                .on_hover_text("Rename active profile")
+                                .clicked()
+                            {
+                                self.is_renaming_profile = true;
+                                self.profile_rename_buf = cur_name;
+                            }
                         }
                     });
 
@@ -523,9 +718,9 @@ impl eframe::App for IcarusApp {
 
                             let (bg_color, stroke_color, fg_color, bar_color, label_text, pill_width, tooltip_title, tooltip_desc) = if is_charging {
                                 let label = if !self.is_wireless {
-                                    format!("⚡ {}% USB", battery)
+                                    format!("{}% USB", battery)
                                 } else {
-                                    format!("⚡ {}% Charging", battery)
+                                    format!("{}% Charging", battery)
                                 };
                                 (
                                     egui::Color32::from_rgb(240, 249, 255),
@@ -551,9 +746,9 @@ impl eframe::App for IcarusApp {
                                     } else {
                                         egui::Color32::TRANSPARENT
                                     },
-                                    format!("🪫 {}% Sekarat!", battery),
+                                    format!("LOW {}% (Sekarat!)", battery),
                                     134.0,
-                                    "🚨 PERINGATAN: Baterai Sekarat!",
+                                    "PERINGATAN: Baterai Sekarat!",
                                     "Daya baterai hampir habis (≤ 10%). Segera hubungkan kabel USB agar mouse tidak mati mendadak.",
                                 )
                             } else if is_low {
@@ -562,9 +757,9 @@ impl eframe::App for IcarusApp {
                                     egui::Color32::from_rgb(248, 113, 113),
                                     egui::Color32::from_rgb(185, 28, 28),
                                     egui::Color32::from_rgb(239, 68, 68),
-                                    format!("⚠️ {}% Lemah", battery),
+                                    format!("LOW {}% (Lemah)", battery),
                                     122.0,
-                                    "⚠️ Perhatian: Baterai Lemah",
+                                    "Perhatian: Baterai Lemah",
                                     "Daya baterai tersisa rendah (≤ 20%). Disarankan untuk segera mengisi daya.",
                                 )
                             } else if battery <= 50 {
@@ -1273,6 +1468,172 @@ impl IcarusApp {
                         }
                     });
                 });
+
+                ui.add_space(10.0);
+
+                // Mouse Click & Debounce Tester Card
+                let test_frame = egui::Frame::none()
+                    .fill(egui::Color32::WHITE)
+                    .stroke(egui::Stroke::new(
+                        1.0_f32,
+                        egui::Color32::from_rgb(226, 232, 240),
+                    ))
+                    .rounding(egui::Rounding::same(8.0))
+                    .inner_margin(egui::Margin::symmetric(14.0, 10.0));
+
+                test_frame.show(ui, |ui| {
+                    ui.set_width(382.0);
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("Mouse Click & Debounce Tester")
+                                .size(13.0)
+                                .strong()
+                                .color(egui::Color32::from_rgb(2, 132, 199)),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("Clear").clicked() {
+                                self.test_clicks_count = 0;
+                                self.test_last_click_time = None;
+                                self.test_last_click_delta_ms = None;
+                                self.test_double_click_detected = false;
+                                self.test_recent_clicks.clear();
+                                self.test_last_button_name = "None".into();
+                            }
+                        });
+                    });
+
+                    ui.add_space(4.0);
+
+                    // Clickable Testing Area
+                    let (target_rect, target_resp) = ui.allocate_exact_size(
+                        egui::vec2(382.0, 48.0),
+                        egui::Sense::click_and_drag(),
+                    );
+
+                    let is_target_hovered = target_resp.hovered();
+                    ui.painter().rect_filled(
+                        target_rect,
+                        6.0,
+                        if self.test_double_click_detected {
+                            egui::Color32::from_rgb(254, 242, 242)
+                        } else if is_target_hovered {
+                            egui::Color32::from_rgb(240, 249, 255)
+                        } else {
+                            egui::Color32::from_rgb(248, 250, 252)
+                        },
+                    );
+                    ui.painter().rect_stroke(
+                        target_rect,
+                        6.0,
+                        egui::Stroke::new(
+                            if is_target_hovered || self.test_double_click_detected {
+                                1.5_f32
+                            } else {
+                                1.0_f32
+                            },
+                            if self.test_double_click_detected {
+                                egui::Color32::from_rgb(239, 68, 68)
+                            } else if is_target_hovered {
+                                egui::Color32::from_rgb(56, 189, 248)
+                            } else {
+                                egui::Color32::from_rgb(226, 232, 240)
+                            },
+                        ),
+                    );
+
+                    // Capture any pointer click inside the box
+                    let mut clicked_btn_name = None;
+                    if target_resp.clicked() {
+                        clicked_btn_name = Some("Left Click");
+                    } else if target_resp.secondary_clicked() {
+                        clicked_btn_name = Some("Right Click");
+                    } else if target_resp.middle_clicked() {
+                        clicked_btn_name = Some("Middle Click");
+                    }
+
+                    if let Some(btn_name) = clicked_btn_name {
+                        let now = Instant::now();
+                        if let Some(prev) = self.test_last_click_time {
+                            let delta = prev.elapsed().as_millis() as u64;
+                            self.test_last_click_delta_ms = Some(delta);
+                            self.test_double_click_detected =
+                                delta <= self.config.debounce_ms as u64 || delta < 20;
+                        }
+                        self.test_last_click_time = Some(now);
+                        self.test_clicks_count += 1;
+                        self.test_recent_clicks.push(now);
+                        self.test_last_button_name = btn_name.to_string();
+                    }
+
+                    // Prune clicks older than 1 second to compute live CPS
+                    let now = Instant::now();
+                    self.test_recent_clicks
+                        .retain(|t| now.duration_since(*t) <= Duration::from_secs(1));
+                    let current_cps = self.test_recent_clicks.len();
+
+                    ui.painter().text(
+                        target_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        if self.test_clicks_count == 0 {
+                            "Click rapidly inside here with Left / Right / Middle"
+                        } else {
+                            "Clicking active..."
+                        },
+                        egui::FontId::proportional(11.5),
+                        egui::Color32::from_rgb(100, 116, 139),
+                    );
+
+                    ui.add_space(6.0);
+
+                    // Statistics Row: Live CPS, Click Interval & Double-Click warning
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 8.0;
+
+                        // CPS Badge
+                        let (cps_r, _) =
+                            ui.allocate_exact_size(egui::vec2(58.0, 20.0), egui::Sense::hover());
+                        ui.painter().rect_filled(
+                            cps_r,
+                            4.0,
+                            egui::Color32::from_rgb(224, 242, 254),
+                        );
+                        ui.painter().text(
+                            cps_r.center(),
+                            egui::Align2::CENTER_CENTER,
+                            format!("{} CPS", current_cps),
+                            egui::FontId::proportional(11.0),
+                            egui::Color32::from_rgb(2, 132, 199),
+                        );
+
+                        ui.label(
+                            egui::RichText::new(format!("Clicks: {}", self.test_clicks_count))
+                                .size(11.0)
+                                .color(egui::Color32::from_rgb(71, 85, 105)),
+                        );
+
+                        if let Some(delta) = self.test_last_click_delta_ms {
+                            let text_col = if self.test_double_click_detected {
+                                egui::Color32::from_rgb(220, 38, 38)
+                            } else {
+                                egui::Color32::from_rgb(22, 163, 74)
+                            };
+                            let msg = if self.test_double_click_detected {
+                                format!("Double Click! ({}ms)", delta)
+                            } else {
+                                format!("Delta: {}ms", delta)
+                            };
+                            ui.label(egui::RichText::new(msg).size(11.0).strong().color(text_col));
+                        }
+
+                        if self.test_last_button_name != "None" {
+                            ui.label(
+                                egui::RichText::new(format!("({})", self.test_last_button_name))
+                                    .size(10.5)
+                                    .color(egui::Color32::from_rgb(148, 163, 184)),
+                            );
+                        }
+                    });
+                });
             });
 
             // ==========================================
@@ -1837,7 +2198,7 @@ impl IcarusApp {
                     rail_left + rail_width * t.clamp(0.0, 1.0)
                 };
 
-                // Ticks for key milestones
+                // Interactive Ticks for key milestones
                 let milestones = [
                     (400, "400"),
                     (800, "800"),
@@ -1849,17 +2210,64 @@ impl IcarusApp {
                 ];
                 for (d, label) in milestones {
                     let x = dpi_to_x(d);
+                    let tick_rect = egui::Rect::from_center_size(
+                        egui::pos2(x, rail_y + 11.0),
+                        egui::vec2(28.0, 18.0),
+                    );
+                    let tick_resp = ui.interact(
+                        tick_rect,
+                        ui.id().with(("dpi_milestone", d)),
+                        egui::Sense::click(),
+                    );
+                    let is_hovered = tick_resp.hovered();
+
                     ui.painter().line_segment(
                         [egui::pos2(x, rail_y - 3.0), egui::pos2(x, rail_y + 3.0)],
-                        egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(148, 163, 184)),
+                        egui::Stroke::new(
+                            if is_hovered { 1.5_f32 } else { 1.0_f32 },
+                            if is_hovered {
+                                egui::Color32::from_rgb(2, 132, 199)
+                            } else {
+                                egui::Color32::from_rgb(148, 163, 184)
+                            },
+                        ),
                     );
+
+                    if is_hovered {
+                        ui.painter().rect_filled(
+                            tick_rect,
+                            3.0,
+                            egui::Color32::from_rgb(224, 242, 254),
+                        );
+                    }
+
                     ui.painter().text(
-                        egui::pos2(x, rail_y + 12.0),
+                        egui::pos2(x, rail_y + 11.0),
                         egui::Align2::CENTER_CENTER,
                         label,
-                        egui::FontId::proportional(9.0),
-                        egui::Color32::from_rgb(100, 116, 139),
+                        egui::FontId::proportional(9.5),
+                        if is_hovered {
+                            egui::Color32::from_rgb(2, 132, 199)
+                        } else {
+                            egui::Color32::from_rgb(100, 116, 139)
+                        },
                     );
+
+                    let act_idx = (self.config.active_dpi_stage as usize)
+                        .min(self.config.dpi_stages.len().saturating_sub(1));
+                    let tick_resp = tick_resp.on_hover_text(format!(
+                        "Click to set active stage (Stage {}) to {} DPI",
+                        act_idx + 1,
+                        d
+                    ));
+
+                    if tick_resp.clicked() && act_idx < self.config.dpi_stages.len() {
+                        self.config.dpi_stages[act_idx].dpi = d;
+                        if self.dpi_text_inputs.len() > act_idx {
+                            self.dpi_text_inputs[act_idx] = d.to_string();
+                        }
+                        self.set_status(format!("Stage {} set to {} DPI", act_idx + 1, d), true);
+                    }
                 }
 
                 // Paint Stage markers
@@ -1913,7 +2321,118 @@ impl IcarusApp {
                     }
                 }
 
-                ui.add_space(10.0);
+                ui.add_space(8.0);
+
+                // Quick Presets and Single DPI Lock Action Bar
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+
+                    let enabled_count = self.config.dpi_stages.iter().filter(|s| s.enabled).count();
+                    let is_single_locked = enabled_count == 1;
+
+                    let lock_btn = egui::Button::new(
+                        egui::RichText::new(if is_single_locked {
+                            "Unlock Stages"
+                        } else {
+                            "Lock Single DPI (FPS)"
+                        })
+                        .size(11.0)
+                        .strong()
+                        .color(if is_single_locked {
+                            egui::Color32::from_rgb(22, 163, 74)
+                        } else {
+                            egui::Color32::from_rgb(2, 132, 199)
+                        }),
+                    )
+                    .fill(if is_single_locked {
+                        egui::Color32::from_rgb(240, 253, 244)
+                    } else {
+                        egui::Color32::from_rgb(240, 249, 255)
+                    })
+                    .stroke(egui::Stroke::new(
+                        1.0_f32,
+                        if is_single_locked {
+                            egui::Color32::from_rgb(187, 247, 208)
+                        } else {
+                            egui::Color32::from_rgb(186, 230, 253)
+                        },
+                    ))
+                    .rounding(egui::Rounding::same(4.0));
+
+                    let lock_resp = ui.add(lock_btn);
+                    if lock_resp.on_hover_text(if is_single_locked {
+                        "Click to unlock and re-enable all DPI stages."
+                    } else {
+                        "Lock to active stage only (disables other stages to avoid accidental DPI shifts during competitive play)."
+                    }).clicked() {
+                        let active = self.config.active_dpi_stage as usize;
+                        if is_single_locked {
+                            for s in &mut self.config.dpi_stages {
+                                s.enabled = true;
+                            }
+                            self.set_status("All DPI stages unlocked and enabled", true);
+                        } else {
+                            for (idx, s) in self.config.dpi_stages.iter_mut().enumerate() {
+                                s.enabled = idx == active;
+                            }
+                            self.set_status(format!("Locked to Single DPI: Stage {} ({} DPI)", active + 1, self.config.dpi_stages[active].dpi), true);
+                        }
+                    }
+
+                    // Esports Pro Preset Button
+                    let esports_btn = egui::Button::new(
+                        egui::RichText::new("Esports Pro (400-3200)")
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(51, 65, 85)),
+                    )
+                    .fill(egui::Color32::from_rgb(248, 250, 252))
+                    .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(226, 232, 240)))
+                    .rounding(egui::Rounding::same(4.0));
+
+                    if ui.add(esports_btn).on_hover_text("Preset: 400, 800, 1600, 3200 DPI (Stage 2: 800 active)").clicked() {
+                        let preset = [400, 800, 1600, 3200];
+                        for (idx, &dpi) in preset.iter().enumerate() {
+                            if idx < self.config.dpi_stages.len() {
+                                self.config.dpi_stages[idx].dpi = dpi;
+                                self.config.dpi_stages[idx].enabled = true;
+                                if self.dpi_text_inputs.len() > idx {
+                                    self.dpi_text_inputs[idx] = dpi.to_string();
+                                }
+                            }
+                        }
+                        if self.config.dpi_stages.len() > 4 {
+                            self.config.dpi_stages[4].enabled = false;
+                        }
+                        self.config.active_dpi_stage = 1;
+                        self.set_status("Applied Esports Pro DPI preset (400-3200)", true);
+                    }
+
+                    // 4K High-Res Preset Button
+                    let hi_btn = egui::Button::new(
+                        egui::RichText::new("4K High-Res (800-6400)")
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(51, 65, 85)),
+                    )
+                    .fill(egui::Color32::from_rgb(248, 250, 252))
+                    .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(226, 232, 240)))
+                    .rounding(egui::Rounding::same(4.0));
+
+                    if ui.add(hi_btn).on_hover_text("Preset: 800, 1600, 2400, 3200, 6400 DPI").clicked() {
+                        let preset = [800, 1600, 2400, 3200, 6400];
+                        for (idx, &dpi) in preset.iter().enumerate() {
+                            if idx < self.config.dpi_stages.len() {
+                                self.config.dpi_stages[idx].dpi = dpi;
+                                self.config.dpi_stages[idx].enabled = true;
+                                if self.dpi_text_inputs.len() > idx {
+                                    self.dpi_text_inputs[idx] = dpi.to_string();
+                                }
+                            }
+                        }
+                        self.set_status("Applied 4K High-Res DPI preset (800-6400)", true);
+                    }
+                });
+
+                ui.add_space(8.0);
 
                 // 5 DPI Stage Configuration Cards
                 for i in 0..self.config.dpi_stages.len() {
@@ -2053,7 +2572,9 @@ impl IcarusApp {
                                 .clicked()
                             {
                                 let cur = self.config.dpi_stages[i].dpi;
-                                self.config.dpi_stages[i].dpi = cur.saturating_sub(50).max(50);
+                                let new_val = cur.saturating_sub(50).max(50);
+                                self.config.dpi_stages[i].dpi = new_val;
+                                self.dpi_text_inputs[i] = new_val.to_string();
                             }
 
                             let mut dpi_val = self.config.dpi_stages[i].dpi as i32;
@@ -2067,6 +2588,7 @@ impl IcarusApp {
                             if is_enabled && slider_resp.changed() {
                                 let snapped = crate::dpi::snap_dpi(dpi_val.clamp(50, 26000) as u16);
                                 self.config.dpi_stages[i].dpi = snapped;
+                                self.dpi_text_inputs[i] = snapped.to_string();
                             }
 
                             let plus_btn = egui::Button::new(
@@ -2088,48 +2610,133 @@ impl IcarusApp {
                                 .clicked()
                             {
                                 let cur = self.config.dpi_stages[i].dpi;
-                                self.config.dpi_stages[i].dpi = cur.saturating_add(50).min(26000);
+                                let new_val = cur.saturating_add(50).min(26000);
+                                self.config.dpi_stages[i].dpi = new_val;
+                                self.dpi_text_inputs[i] = new_val.to_string();
                             }
 
                             ui.add_space(8.0);
 
-                            // Dedicated Crisp DPI Value Box
-                            let (val_rect, _) = ui
-                                .allocate_exact_size(egui::vec2(92.0, 24.0), egui::Sense::hover());
-                            ui.painter().rect_filled(
-                                val_rect,
-                                4.0,
-                                if is_active_stage {
+                            // Dedicated Editable DPI Value Box with Free Text Input
+                            if self.dpi_text_inputs.len() <= i {
+                                self.dpi_text_inputs.resize(i + 1, String::new());
+                            }
+                            let text_id = egui::Id::new(("dpi_stage_input", i));
+                            let is_text_focused = ui.memory(|m| m.has_focus(text_id));
+
+                            // Sync buffer from config when not actively typing
+                            if !is_text_focused {
+                                self.dpi_text_inputs[i] = self.config.dpi_stages[i].dpi.to_string();
+                            }
+
+                            let pill_frame = egui::Frame::none()
+                                .fill(if is_text_focused {
+                                    egui::Color32::WHITE
+                                } else if is_active_stage {
                                     egui::Color32::from_rgb(224, 242, 254)
                                 } else {
                                     egui::Color32::from_rgb(248, 250, 252)
-                                },
-                            );
-                            ui.painter().rect_stroke(
-                                val_rect,
-                                4.0,
-                                egui::Stroke::new(
-                                    1.0_f32,
-                                    if is_active_stage {
+                                })
+                                .stroke(egui::Stroke::new(
+                                    if is_text_focused { 1.5_f32 } else { 1.0_f32 },
+                                    if is_text_focused {
+                                        egui::Color32::from_rgb(2, 132, 199)
+                                    } else if is_active_stage {
                                         egui::Color32::from_rgb(186, 230, 253)
                                     } else {
                                         egui::Color32::from_rgb(226, 232, 240)
                                     },
-                                ),
-                            );
-                            ui.painter().text(
-                                val_rect.center(),
-                                egui::Align2::CENTER_CENTER,
-                                format!("{} DPI", self.config.dpi_stages[i].dpi),
-                                egui::FontId::proportional(12.5),
-                                if is_active_stage {
-                                    egui::Color32::from_rgb(2, 132, 199)
-                                } else if !is_enabled {
-                                    egui::Color32::from_rgb(148, 163, 184)
-                                } else {
-                                    egui::Color32::from_rgb(15, 23, 42)
-                                },
-                            );
+                                ))
+                                .rounding(egui::Rounding::same(4.0))
+                                .inner_margin(egui::Margin::symmetric(6.0, 1.0));
+
+                            let mut text_edit_resp = None;
+                            pill_frame.show(ui, |ui| {
+                                ui.set_min_size(egui::vec2(96.0, 24.0));
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 4.0;
+                                    let text_widget =
+                                        egui::TextEdit::singleline(&mut self.dpi_text_inputs[i])
+                                            .id(text_id)
+                                            .desired_width(52.0)
+                                            .frame(false)
+                                            .horizontal_align(egui::Align::RIGHT)
+                                            .font(egui::FontId::proportional(12.5))
+                                            .text_color(if !is_enabled {
+                                                egui::Color32::from_rgb(148, 163, 184)
+                                            } else {
+                                                egui::Color32::from_rgb(15, 23, 42)
+                                            });
+
+                                    let resp = ui.add_enabled(is_enabled, text_widget);
+
+                                    let lbl_resp = ui.add_enabled(
+                                        is_enabled,
+                                        egui::Label::new(
+                                            egui::RichText::new("DPI")
+                                                .size(11.0)
+                                                .color(if is_active_stage {
+                                                    egui::Color32::from_rgb(2, 132, 199)
+                                                } else if !is_enabled {
+                                                    egui::Color32::from_rgb(148, 163, 184)
+                                                } else {
+                                                    egui::Color32::from_rgb(100, 116, 139)
+                                                })
+                                                .strong(),
+                                        )
+                                        .sense(egui::Sense::click()),
+                                    );
+
+                                    if is_enabled && lbl_resp.clicked() {
+                                        resp.request_focus();
+                                    }
+
+                                    text_edit_resp = Some(resp);
+                                });
+                            });
+
+                            if let Some(mut resp) = text_edit_resp {
+                                resp = resp.on_hover_text(
+                                    "Click to type custom DPI (50 – 26000, 50 DPI steps). Press Enter to apply.",
+                                );
+
+                                let enter_pressed = resp.has_focus()
+                                    && ui.input(|inp| inp.key_pressed(egui::Key::Enter));
+
+                                // Live update if user entered a valid number
+                                if is_enabled && resp.changed() {
+                                    let clean: String = self.dpi_text_inputs[i]
+                                        .chars()
+                                        .filter(|c| c.is_ascii_digit())
+                                        .collect();
+                                    if let Some(val) =
+                                        clean.parse::<u32>().ok().filter(|&v| (50..=26000).contains(&v))
+                                    {
+                                        self.config.dpi_stages[i].dpi = val as u16;
+                                    }
+                                }
+
+                                // On blur or Enter: validate, clamp to 50..=26000, snap to 50 DPI step, and format
+                                if is_enabled && (resp.lost_focus() || enter_pressed) {
+                                    let clean: String = self.dpi_text_inputs[i]
+                                        .chars()
+                                        .filter(|c| c.is_ascii_digit())
+                                        .collect();
+                                    if let Ok(val) = clean.parse::<u32>() {
+                                        let clamped = val.clamp(50, 26000) as u16;
+                                        let snapped = crate::dpi::snap_dpi(clamped);
+                                        self.config.dpi_stages[i].dpi = snapped;
+                                        self.dpi_text_inputs[i] = snapped.to_string();
+                                    } else {
+                                        self.dpi_text_inputs[i] =
+                                            self.config.dpi_stages[i].dpi.to_string();
+                                    }
+
+                                    if enter_pressed {
+                                        resp.surrender_focus();
+                                    }
+                                }
+                            }
                         });
                     });
                     ui.add_space(6.0);
@@ -2144,6 +2751,9 @@ impl IcarusApp {
             .min(self.config.dpi_stages.len().saturating_sub(1));
         if active_idx < self.config.dpi_stages.len() {
             self.config.dpi_stages[active_idx].color = col;
+        }
+        if self.auto_apply_lighting {
+            self.apply_lighting_to_device();
         }
     }
 
@@ -2169,7 +2779,7 @@ impl IcarusApp {
         banner_frame.show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(
-                    egui::RichText::new("💡 DPI Indicator Lamp:")
+                    egui::RichText::new("DPI Indicator Lamp:")
                         .strong()
                         .color(egui::Color32::from_rgb(2, 132, 199)),
                 );
@@ -2184,21 +2794,40 @@ impl IcarusApp {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Target DPI Stage:").size(11.5).color(egui::Color32::from_rgb(100, 116, 139)));
-                for (s_idx, s) in self.config.dpi_stages.iter().enumerate() {
+                let num_stages = self.config.dpi_stages.len();
+                for s_idx in 0..num_stages {
                     let is_active = self.config.active_dpi_stage == s_idx as u8;
-                    let scol = egui::Color32::from_rgb(s.color.r, s.color.g, s.color.b);
+                    let (scol, dpi, col) = {
+                        let s = &self.config.dpi_stages[s_idx];
+                        (
+                            egui::Color32::from_rgb(s.color.r, s.color.g, s.color.b),
+                            s.dpi,
+                            s.color,
+                        )
+                    };
                     let btn = egui::Button::new(
-                        egui::RichText::new(format!("Stage {} ({} DPI)", s_idx + 1, s.dpi))
+                        egui::RichText::new(format!("Stage {} ({} DPI)", s_idx + 1, dpi))
                             .size(11.0)
                             .strong()
-                            .color(if is_active { egui::Color32::WHITE } else { egui::Color32::from_rgb(30, 41, 59) }),
+                            .color(if is_active {
+                                egui::Color32::WHITE
+                            } else {
+                                egui::Color32::from_rgb(30, 41, 59)
+                            }),
                     )
-                    .fill(if is_active { egui::Color32::from_rgb(2, 132, 199) } else { egui::Color32::from_rgb(255, 255, 255) })
+                    .fill(if is_active {
+                        egui::Color32::from_rgb(2, 132, 199)
+                    } else {
+                        egui::Color32::from_rgb(255, 255, 255)
+                    })
                     .stroke(egui::Stroke::new(1.5_f32, scol))
                     .rounding(egui::Rounding::same(4.0));
                     if ui.add(btn).clicked() {
                         self.config.active_dpi_stage = s_idx as u8;
-                        self.config.dpi_led.color = s.color;
+                        self.config.dpi_led.color = col;
+                        if self.auto_apply_lighting {
+                            self.apply_lighting_to_device();
+                        }
                     }
                 }
             });
@@ -2234,6 +2863,31 @@ impl IcarusApp {
             // Left Column: Live Illumination Preview Card, Effect Mode & Timers
             ui.vertical(|ui| {
                 ui.set_width(380.0);
+
+                // Live Auto-Apply Toggle Switch
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    let mut auto_apply = self.auto_apply_lighting;
+                    if toggle_switch(ui, &mut auto_apply).changed() {
+                        self.auto_apply_lighting = auto_apply;
+                        if auto_apply {
+                            self.apply_lighting_to_device();
+                            self.set_status("Live Auto-Apply on Mouse enabled", true);
+                        }
+                    }
+                    ui.label(
+                        egui::RichText::new("Live Auto-Apply on Mouse")
+                            .size(12.0)
+                            .strong()
+                            .color(if self.auto_apply_lighting {
+                                egui::Color32::from_rgb(2, 132, 199)
+                            } else {
+                                egui::Color32::from_rgb(71, 85, 105)
+                            }),
+                    ).on_hover_text("When enabled, lighting changes (modes, colors, brightness, speed) are sent directly to your mouse hardware in real time without clicking Apply Changes.");
+                });
+
+                ui.add_space(8.0);
 
                 // Live Illumination Preview Glow Card
                 ui.group(|ui| {
@@ -2372,6 +3026,9 @@ impl IcarusApp {
 
                         if ui.add(btn).clicked() {
                             self.config.dpi_led.mode = mode;
+                            if self.auto_apply_lighting {
+                                self.apply_lighting_to_device();
+                            }
                         }
                         ui.add_space(4.0);
                     }
@@ -2387,10 +3044,16 @@ impl IcarusApp {
                     ui.add_space(4.0);
 
                     ui.label(format!("Brightness: {}", self.config.dpi_led.brightness));
-                    ui.add(egui::Slider::new(
-                        &mut self.config.dpi_led.brightness,
-                        0..=10,
-                    ));
+                    if ui
+                        .add(egui::Slider::new(
+                            &mut self.config.dpi_led.brightness,
+                            0..=10,
+                        ))
+                        .changed()
+                        && self.auto_apply_lighting
+                    {
+                        self.apply_lighting_to_device();
+                    }
 
                     ui.add_space(6.0);
 
@@ -2398,10 +3061,16 @@ impl IcarusApp {
                         "Breathing Speed: {}",
                         self.config.dpi_led.breath_speed
                     ));
-                    ui.add(egui::Slider::new(
-                        &mut self.config.dpi_led.breath_speed,
-                        1..=10,
-                    ));
+                    if ui
+                        .add(egui::Slider::new(
+                            &mut self.config.dpi_led.breath_speed,
+                            1..=10,
+                        ))
+                        .changed()
+                        && self.auto_apply_lighting
+                    {
+                        self.apply_lighting_to_device();
+                    }
 
                     ui.add_space(6.0);
 
@@ -2426,7 +3095,13 @@ impl IcarusApp {
                         .width(130.0)
                         .show_ui(ui, |ui| {
                             for (val, label) in sleep_options {
-                                ui.selectable_value(&mut self.config.led_sleep_seconds, val, label);
+                                if ui
+                                    .selectable_value(&mut self.config.led_sleep_seconds, val, label)
+                                    .clicked()
+                                    && self.auto_apply_lighting
+                                {
+                                    self.apply_lighting_to_device();
+                                }
                             }
                         });
                 });
@@ -2633,19 +3308,25 @@ impl IcarusApp {
                     ui.add_space(12.0);
                     ui.label("Fine Tuning (Custom RGB Sliders):");
 
+                    let mut color_changed = false;
+
                     // Red slider with Add/Reduce buttons
                     ui.horizontal(|ui| {
                         if ui.button(egui::RichText::new("-5").strong()).clicked() {
                             self.config.dpi_led.color.r =
                                 self.config.dpi_led.color.r.saturating_sub(5);
+                            color_changed = true;
                         }
 
                         ui.label("Red:  ");
-                        ui.add(egui::Slider::new(&mut self.config.dpi_led.color.r, 0..=255));
+                        if ui.add(egui::Slider::new(&mut self.config.dpi_led.color.r, 0..=255)).changed() {
+                            color_changed = true;
+                        }
 
                         if ui.button(egui::RichText::new("+5").strong()).clicked() {
                             self.config.dpi_led.color.r =
                                 self.config.dpi_led.color.r.saturating_add(5);
+                            color_changed = true;
                         }
                     });
 
@@ -2654,14 +3335,18 @@ impl IcarusApp {
                         if ui.button(egui::RichText::new("-5").strong()).clicked() {
                             self.config.dpi_led.color.g =
                                 self.config.dpi_led.color.g.saturating_sub(5);
+                            color_changed = true;
                         }
 
                         ui.label("Green:");
-                        ui.add(egui::Slider::new(&mut self.config.dpi_led.color.g, 0..=255));
+                        if ui.add(egui::Slider::new(&mut self.config.dpi_led.color.g, 0..=255)).changed() {
+                            color_changed = true;
+                        }
 
                         if ui.button(egui::RichText::new("+5").strong()).clicked() {
                             self.config.dpi_led.color.g =
                                 self.config.dpi_led.color.g.saturating_add(5);
+                            color_changed = true;
                         }
                     });
 
@@ -2670,19 +3355,25 @@ impl IcarusApp {
                         if ui.button(egui::RichText::new("-5").strong()).clicked() {
                             self.config.dpi_led.color.b =
                                 self.config.dpi_led.color.b.saturating_sub(5);
+                            color_changed = true;
                         }
 
                         ui.label("Blue: ");
-                        ui.add(egui::Slider::new(&mut self.config.dpi_led.color.b, 0..=255));
+                        if ui.add(egui::Slider::new(&mut self.config.dpi_led.color.b, 0..=255)).changed() {
+                            color_changed = true;
+                        }
 
                         if ui.button(egui::RichText::new("+5").strong()).clicked() {
                             self.config.dpi_led.color.b =
                                 self.config.dpi_led.color.b.saturating_add(5);
+                            color_changed = true;
                         }
                     });
 
                     // Sync fine-tuned slider RGB to the active DPI stage
-                    self.set_active_lighting_color(self.config.dpi_led.color);
+                    if color_changed {
+                        self.set_active_lighting_color(self.config.dpi_led.color);
+                    }
 
                     ui.add_space(8.0);
 
@@ -3254,27 +3945,70 @@ impl IcarusApp {
 
                 ui.add_space(10.0);
 
-                // Profile Management
+                // Profile Management with Custom Path, Native File Dialog & Quick Presets
                 ui.group(|ui| {
                     ui.heading(
                         egui::RichText::new("Profile Import / Export")
                             .color(egui::Color32::from_rgb(2, 132, 199)),
                     );
-                    ui.label("Save or load custom mouse configuration files:");
-                    ui.add_space(8.0);
+                    ui.label("Save or load custom mouse configuration files (.toml):");
+                    ui.add_space(6.0);
 
+                    // File path input and Browse button
                     ui.horizontal(|ui| {
-                        if ui.button("Export Profile (TOML)").clicked() {
+                        ui.label("Path:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.profile_custom_path)
+                                .desired_width(220.0)
+                                .hint_text("icarus-profile.toml"),
+                        );
+                        if ui
+                            .button("Browse...")
+                            .on_hover_text("Open native file dialog to choose a profile file")
+                            .clicked()
+                        {
+                            let picked = pick_file_zenity(false, &self.profile_custom_path);
+                            if let Some(path) = picked {
+                                self.profile_custom_path = path;
+                            }
+                        }
+                    });
+
+                    ui.add_space(6.0);
+
+                    // Action buttons
+                    ui.horizontal(|ui| {
+                        let export_btn = egui::Button::new(
+                            egui::RichText::new("Export Profile (TOML)")
+                                .color(egui::Color32::WHITE)
+                                .strong(),
+                        )
+                        .fill(egui::Color32::from_rgb(2, 132, 199))
+                        .rounding(egui::Rounding::same(4.0));
+
+                        if ui
+                            .add(export_btn)
+                            .on_hover_text("Save current configuration to the specified TOML file")
+                            .clicked()
+                        {
+                            let path = self.profile_custom_path.trim();
+                            let target_path = if path.is_empty() {
+                                "icarus-profile.toml"
+                            } else {
+                                path
+                            };
                             match toml::to_string_pretty(&self.config) {
                                 Ok(toml_str) => {
-                                    let file_path = "icarus-profile.toml";
-                                    if std::fs::write(file_path, toml_str).is_ok() {
+                                    if std::fs::write(target_path, toml_str).is_ok() {
                                         self.set_status(
-                                            format!("Saved profile to {}", file_path),
+                                            format!("Saved profile to {}", target_path),
                                             true,
                                         );
                                     } else {
-                                        self.set_status("Failed to write profile file", false);
+                                        self.set_status(
+                                            format!("Failed to write to '{}'", target_path),
+                                            false,
+                                        );
                                     }
                                 }
                                 Err(e) => self.set_status(
@@ -3284,9 +4018,30 @@ impl IcarusApp {
                             }
                         }
 
-                        if ui.button("Import Profile (TOML)").clicked() {
-                            let file_path = "icarus-profile.toml";
-                            match std::fs::read_to_string(file_path) {
+                        let import_btn = egui::Button::new(
+                            egui::RichText::new("Import Profile (TOML)")
+                                .color(egui::Color32::from_rgb(15, 23, 42))
+                                .strong(),
+                        )
+                        .fill(egui::Color32::from_rgb(241, 245, 249))
+                        .stroke(egui::Stroke::new(
+                            1.0_f32,
+                            egui::Color32::from_rgb(203, 213, 225),
+                        ))
+                        .rounding(egui::Rounding::same(4.0));
+
+                        if ui
+                            .add(import_btn)
+                            .on_hover_text("Load configuration from the specified TOML file")
+                            .clicked()
+                        {
+                            let path = self.profile_custom_path.trim();
+                            let target_path = if path.is_empty() {
+                                "icarus-profile.toml"
+                            } else {
+                                path
+                            };
+                            match std::fs::read_to_string(target_path) {
                                 Ok(content) => match toml::from_str::<MouseConfig>(&content) {
                                     Ok(mut cfg) => {
                                         cfg.validate();
@@ -3295,15 +4050,84 @@ impl IcarusApp {
                                             self.selected_macro_idx = 0;
                                         }
                                         self.set_status(
-                                            format!("Loaded profile from {}", file_path),
+                                            format!("Loaded profile from {}", target_path),
                                             true,
                                         );
                                     }
                                     Err(e) => self.set_status(format!("Parse error: {}", e), false),
                                 },
-                                Err(_) => {
-                                    self.set_status("File 'icarus-profile.toml' not found", false)
+                                Err(e) => {
+                                    self.set_status(
+                                        format!("Cannot read '{}': {}", target_path, e),
+                                        false,
+                                    );
                                 }
+                            }
+                        }
+
+                        if ui
+                            .button("Save As...")
+                            .on_hover_text("Open file save dialog to pick destination and save")
+                            .clicked()
+                        {
+                            let picked = pick_file_zenity(true, &self.profile_custom_path);
+                            if let Some(path) = picked {
+                                self.profile_custom_path = path;
+                                if let Ok(toml_str) = toml::to_string_pretty(&self.config) {
+                                    if std::fs::write(&self.profile_custom_path, toml_str).is_ok() {
+                                        self.set_status(
+                                            format!(
+                                                "Saved profile to {}",
+                                                self.profile_custom_path
+                                            ),
+                                            true,
+                                        );
+                                    } else {
+                                        self.set_status("Failed to save file", false);
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new("Quick Filename Presets:")
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                    ui.horizontal_wrapped(|ui| {
+                        let presets = [
+                            ("default.toml", "icarus-profile.toml"),
+                            ("cs2.toml", "backup-cs2.toml"),
+                            ("valorant.toml", "backup-valorant.toml"),
+                            ("work.toml", "backup-work.toml"),
+                        ];
+                        for (label, filename) in presets {
+                            let is_curr = self.profile_custom_path == filename;
+                            let btn = egui::Button::new(
+                                egui::RichText::new(label).size(11.0).color(if is_curr {
+                                    egui::Color32::from_rgb(2, 132, 199)
+                                } else {
+                                    egui::Color32::from_rgb(71, 85, 105)
+                                }),
+                            )
+                            .fill(if is_curr {
+                                egui::Color32::from_rgb(224, 242, 254)
+                            } else {
+                                egui::Color32::from_rgb(241, 245, 249)
+                            })
+                            .stroke(egui::Stroke::new(
+                                1.0_f32,
+                                if is_curr {
+                                    egui::Color32::from_rgb(2, 132, 199)
+                                } else {
+                                    egui::Color32::from_rgb(226, 232, 240)
+                                },
+                            ))
+                            .rounding(egui::Rounding::same(4.0));
+                            if ui.add(btn).clicked() {
+                                self.profile_custom_path = filename.to_string();
                             }
                         }
                     });

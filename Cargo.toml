@@ -1,9 +1,13 @@
 [package]
 name = "icarus-v2mini"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
-description = "Native Linux configuration tool for ICARUS V2 MINI gaming mouse"
+description = "Native Linux configuration tool and driver for ICARUS V2 MINI gaming mouse"
 license = "MIT"
+repository = "https://github.com/ayrazarya/icarus-v2mini-rea"
+readme = "README.md"
+keywords = ["mouse", "gaming", "driver", "paw3395", "linux"]
+categories = ["hardware-support", "gui"]
 
 [dependencies]
 hidapi = { version = "2.6", default-features = false, features = ["linux-native-basic-udev"] }

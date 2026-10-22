@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build & Package Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev pkg-config
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Release Binary
+        run: cargo build --release --locked
+
+      - name: Package Artifacts
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          PKG_DIR="icarus-v2mini-v${VERSION}-linux-x86_64"
+          mkdir -p "$PKG_DIR"
+          strip target/release/icarus-v2mini
+          cp target/release/icarus-v2mini "$PKG_DIR/"
+          cp 99-icarus-mouse.rules "$PKG_DIR/"
+          cp icarus-v2mini.desktop "$PKG_DIR/"
+          cp assets/app-icon.png "$PKG_DIR/"
+          cp README.md "$PKG_DIR/"
+          cp LICENSE "$PKG_DIR/"
+          tar -czvf "${PKG_DIR}.tar.gz" "$PKG_DIR"
+          sha256sum "${PKG_DIR}.tar.gz" > "${PKG_DIR}.tar.gz.sha256"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            icarus-v2mini-*.tar.gz
+            icarus-v2mini-*.sha256
+          generate_release_notes: true
+          draft: false
+          prerelease: false
