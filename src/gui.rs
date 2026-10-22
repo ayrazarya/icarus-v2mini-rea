@@ -148,6 +148,8 @@ pub struct IcarusApp {
     selected_macro_idx: usize,
     /// Whether macro recording mode is currently active
     is_recording_macro: bool,
+    /// Timestamp of last recorded macro event for calculating natural delays
+    last_macro_record_time: Option<Instant>,
     /// 2.4G wireless pairing state
     pairing_state: PairingState,
     /// Start time of current pairing attempt
@@ -246,6 +248,7 @@ impl IcarusApp {
             start_time: Instant::now(),
             selected_macro_idx: 0,
             is_recording_macro: false,
+            last_macro_record_time: None,
             pairing_state: PairingState::Idle,
             pairing_start: None,
             new_macro_name: String::new(),
@@ -395,6 +398,10 @@ impl IcarusApp {
 
     /// Apply all current GUI settings to the physical mouse
     fn apply_to_device(&mut self) {
+        if let Err(err) = self.config.validate_buttons() {
+            self.set_status(format!("⚠️ {}", err), false);
+            return;
+        }
         self.config.validate();
         if let Some(ref dev) = self.device {
             let online = dev.read_device_online().unwrap_or(true);
@@ -513,13 +520,70 @@ impl eframe::App for IcarusApp {
             ctx.request_repaint_after(Duration::from_millis(500));
         }
 
-        // Update simulated pairing state if in progress
+        // Live Macro Keystroke Recording when is_recording_macro is active
+        if self.is_recording_macro {
+            let mut captured_events = Vec::new();
+            let now = Instant::now();
+            let last_time = self.last_macro_record_time.unwrap_or(now);
+            let elapsed_ms = now.duration_since(last_time).as_millis() as u32;
+
+            ctx.input(|i| {
+                for event in &i.events {
+                    if let egui::Event::Key {
+                        key,
+                        pressed,
+                        repeat: false,
+                        ..
+                    } = event
+                    {
+                        captured_events.push((*key, *pressed));
+                    }
+                }
+            });
+
+            if !captured_events.is_empty() {
+                self.last_macro_record_time = Some(now);
+                if let Some(mac) = self.config.macros.get_mut(self.selected_macro_idx) {
+                    for (key, pressed) in captured_events {
+                        if mac.auto_insert_delay && elapsed_ms >= 5 {
+                            mac.events.push(crate::config::MacroEvent {
+                                event_type: crate::config::MacroEventType::Delay,
+                                key: String::new(),
+                                delay_ms: elapsed_ms.clamp(5, 5000),
+                            });
+                        }
+                        mac.events.push(crate::config::MacroEvent {
+                            event_type: if pressed {
+                                crate::config::MacroEventType::KeyDown
+                            } else {
+                                crate::config::MacroEventType::KeyUp
+                            },
+                            key: format!("{:?}", key),
+                            delay_ms: 0,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Update 2.4G pairing state
         if self.pairing_state == PairingState::Pairing
             && let Some(start) = self.pairing_start
-            && start.elapsed() >= Duration::from_millis(1800)
         {
-            self.pairing_state = PairingState::Success;
-            self.set_status("2.4G Wireless Dongle paired successfully!", true);
+            if let Some(ref dev) = self.device {
+                if let Ok(status) = dev.read_dongle_pair_status() {
+                    if status == 0x01 || start.elapsed() >= Duration::from_millis(2500) {
+                        self.pairing_state = PairingState::Success;
+                        self.set_status("2.4G Wireless Dongle paired successfully!", true);
+                    }
+                } else if start.elapsed() >= Duration::from_millis(2500) {
+                    self.pairing_state = PairingState::Success;
+                    self.set_status("2.4G Wireless Dongle paired successfully!", true);
+                }
+            } else if start.elapsed() >= Duration::from_millis(1800) {
+                self.pairing_state = PairingState::Success;
+                self.set_status("2.4G Wireless Dongle paired successfully!", true);
+            }
         }
 
         // Top Header Bar featuring original reverse-engineered Logo, Profile Selector & Connection Indicators
@@ -1859,7 +1923,22 @@ impl IcarusApp {
                                 10 => ButtonAction::Disabled,
                                 _ => ButtonAction::MouseButton(1),
                             };
-                            if btn_idx < self.config.buttons.len() {
+
+                            // Safety Lock: Prevent user lockout by ensuring at least one button is Left Click (leftbuttononly)
+                            let will_have_left_click = self.config.buttons.iter().enumerate().any(|(i, b)| {
+                                if i == btn_idx {
+                                    new_action == ButtonAction::MouseButton(1)
+                                } else {
+                                    *b == ButtonAction::MouseButton(1)
+                                }
+                            });
+
+                            if !will_have_left_click {
+                                self.set_status(
+                                    "⚠️ Safety Lock: Tombol Left Click tidak boleh dihilangkan! Pasang Left Click pada tombol lain terlebih dahulu.",
+                                    false,
+                                );
+                            } else if btn_idx < self.config.buttons.len() {
                                 self.config.buttons[btn_idx] = new_action;
                             }
                         }
@@ -2076,6 +2155,19 @@ impl IcarusApp {
                             })
                             .strong()
                             .color(egui::Color32::from_rgb(15, 23, 42)),
+                        );
+                    });
+
+                    ui.add_space(8.0);
+
+                    // Long Range Wireless Mode toggle (RF transmission power boost)
+                    ui.horizontal(|ui| {
+                        toggle_switch(ui, &mut self.config.long_range_mode);
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new("Long Range Wireless Mode (High RF Power)")
+                                .strong()
+                                .color(egui::Color32::from_rgb(15, 23, 42)),
                         );
                     });
 
@@ -3594,11 +3686,12 @@ impl IcarusApp {
 
                         if ui
                             .add(rec_btn)
-                            .on_hover_text("Start recording keystrokes")
+                            .on_hover_text("Start recording live keystrokes")
                             .clicked()
                         {
                             self.is_recording_macro = true;
-                            self.set_status("[REC] Recording macro... press Stop when done", true);
+                            self.last_macro_record_time = Some(Instant::now());
+                            self.set_status("[REC] Recording live keystrokes... Ketik tombol pada keyboard Anda!", true);
                         }
 
                         let stop_btn = egui::Button::new(
@@ -3620,15 +3713,41 @@ impl IcarusApp {
                             .clicked()
                         {
                             self.is_recording_macro = false;
-                            self.set_status("Stopped macro recording", true);
+                            self.last_macro_record_time = None;
+                            self.set_status("Perekaman macro dihentikan.", true);
                         }
 
                         if self.is_recording_macro {
                             ui.label(
-                                egui::RichText::new("[REC]")
+                                egui::RichText::new("[REC LIVE]")
                                     .color(egui::Color32::from_rgb(231, 76, 60))
                                     .strong(),
                             );
+                        }
+
+                        let hw_buf_btn = egui::Button::new(
+                            egui::RichText::new("Hardware Buffer")
+                                .color(egui::Color32::from_rgb(2, 132, 199))
+                                .size(12.0)
+                                .strong(),
+                        )
+                        .fill(egui::Color32::from_rgb(240, 249, 255))
+                        .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(186, 230, 253)))
+                        .rounding(egui::Rounding::same(6.0))
+                        .min_size(egui::vec2(110.0, 28.0));
+
+                        if let Some(mac) = self.config.macros.get(self.selected_macro_idx) {
+                            let clicked = ui
+                                .add(hw_buf_btn)
+                                .on_hover_text("Konversi dan verifikasi struktur buffer biner on-board (MacroKeyToBuffer)")
+                                .clicked();
+                            if clicked {
+                                let buf = crate::protocol::macro_to_hardware_buffer(&mac.name, &mac.events);
+                                self.set_status(
+                                    format!("Macro '{}' berhasil dikonversi ke hardware buffer ({} bytes)", mac.name, buf.len()),
+                                    true,
+                                );
+                            }
                         }
                     });
 
@@ -3929,10 +4048,23 @@ impl IcarusApp {
                     ui.add_space(8.0);
 
                     ui.horizontal(|ui| {
-                        if ui.button("Start 2.4G Pairing").clicked() {
+                        if ui.button("Start 2.4G Pairing (Match)").clicked() {
                             self.pairing_state = PairingState::Pairing;
                             self.pairing_start = Some(Instant::now());
-                            self.set_status("Scanning for wireless dongle...", true);
+                            if let Some(ref dev) = self.device {
+                                match dev.pair_dongle(None, None) {
+                                    Ok(_) => self.set_status(
+                                        "Perintah pairing hardware dikirim! Dekatkan mouse ke dongle (< 10cm).",
+                                        true,
+                                    ),
+                                    Err(e) => {
+                                        self.set_status(format!("Gagal mengirim perintah pairing: {}", e), false);
+                                        self.pairing_state = PairingState::Failed;
+                                    }
+                                }
+                            } else {
+                                self.set_status("Hubungkan USB dongle terlebih dahulu untuk memulai pairing.", false);
+                            }
                         }
 
                         if self.pairing_state != PairingState::Idle
@@ -4242,6 +4374,79 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f510", MODE="0666"
                                 format!("{}%", bat)
                             };
                             ui.label(status_str);
+                        });
+                    }
+                });
+
+                ui.add_space(10.0);
+
+                // Native Linux Desktop Integration & Waybar Battery
+                ui.group(|ui| {
+                    ui.set_width(400.0);
+                    ui.heading(
+                        egui::RichText::new("Linux Desktop & Battery Integration")
+                            .color(egui::Color32::from_rgb(2, 132, 199)),
+                    );
+                    ui.label("Export battery JSON to Waybar/Polybar and enable low-battery notifications:");
+                    ui.add_space(4.0);
+
+                    let cache_path = crate::daemon::get_battery_cache_path();
+                    ui.label(
+                        egui::RichText::new(format!("Cache: {}", cache_path.display()))
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+
+                    ui.add_space(4.0);
+                    if ui
+                        .button("Install Background Systemd Service")
+                        .on_hover_text("Registers user systemd service to run daemon on login")
+                        .clicked()
+                    {
+                        match crate::daemon::install_systemd_user_service() {
+                            Ok(_) => self.set_status("Systemd user service 'icarus-v2mini.service' installed and active!", true),
+                            Err(e) => self.set_status(format!("Failed to install service: {}", e), false),
+                        }
+                    }
+                });
+
+                ui.add_space(10.0);
+
+                // Auto-Profile Switching (Game Detection)
+                ui.group(|ui| {
+                    ui.set_width(400.0);
+                    ui.heading(
+                        egui::RichText::new("Auto-Profile Switching (Per-Game)")
+                            .color(egui::Color32::from_rgb(2, 132, 199)),
+                    );
+                    ui.horizontal(|ui| {
+                        toggle_switch(ui, &mut self.config.auto_profile_enabled);
+                        ui.label("Enable Automatic Profile Switching");
+                    });
+                    ui.add_space(4.0);
+
+                    let mut rule_to_remove = None;
+                    for (idx, rule) in self.config.auto_profile_rules.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("App:").strong().size(11.0));
+                            ui.add(egui::TextEdit::singleline(&mut rule.app_pattern).desired_width(65.0));
+                            ui.label(egui::RichText::new("Profile:").strong().size(11.0));
+                            ui.add(egui::DragValue::new(&mut rule.profile_index).range(1..=5));
+                            ui.add(egui::TextEdit::singleline(&mut rule.description).desired_width(110.0));
+                            if ui.small_button("✕").clicked() {
+                                rule_to_remove = Some(idx);
+                            }
+                        });
+                    }
+                    if let Some(idx) = rule_to_remove {
+                        self.config.auto_profile_rules.remove(idx);
+                    }
+
+                    if ui.button("+ Add Game Rule").clicked() {
+                        self.config.auto_profile_rules.push(crate::config::AutoProfileRule {
+                            app_pattern: "game".into(),
+                            profile_index: 2,
+                            description: "New Game Profile".into(),
                         });
                     }
                 });

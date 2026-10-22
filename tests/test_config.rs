@@ -99,3 +99,18 @@ fn test_config_validation() {
     assert_eq!(cfg.dpi_led.brightness, 10);
     assert_eq!(cfg.dpi_led.breath_speed, 1);
 }
+
+#[test]
+fn test_left_click_safety_lock() {
+    let mut cfg = MouseConfig::default();
+    assert!(cfg.validate_buttons().is_ok());
+
+    // Remap all buttons to Disabled (removing Left Click completely)
+    cfg.buttons.fill(ButtonAction::Disabled);
+    assert!(cfg.validate_buttons().is_err());
+
+    // Normalize / validate automatically restores Left Click to Button 1
+    cfg.validate();
+    assert_eq!(cfg.buttons[0], ButtonAction::MouseButton(1));
+    assert!(cfg.validate_buttons().is_ok());
+}

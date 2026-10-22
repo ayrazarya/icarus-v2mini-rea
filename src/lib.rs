@@ -1,4 +1,5 @@
 pub mod config;
+pub mod daemon;
 pub mod device;
 pub mod dpi;
 pub mod gui;

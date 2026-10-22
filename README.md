@@ -5,7 +5,7 @@
 [![Platform](https://img.shields.io/badge/Platform-Linux_Native_(X11%20%2F%20Wayland)-green.svg)]()
 [![Hardware](https://img.shields.io/badge/Sensor-PixArt_PAW3395-red.svg)]()
 [![GUI](https://img.shields.io/badge/GUI-egui_%2F_eframe-blueviolet.svg)]()
-[![Version](https://img.shields.io/badge/Release-v0.2.0-brightgreen.svg)](https://github.com/ayrazarya/icarus-v2mini-rea/releases)
+[![Version](https://img.shields.io/badge/Release-v0.3.0-brightgreen.svg)](https://github.com/ayrazarya/icarus-v2mini-rea/releases)
 
 A native, lightweight, and high-performance Linux driver, configuration utility, and desktop GUI for the **ICARUS V2 MINI** ultralight wireless gaming mouse by **[Press Play](https://pressplayid.com/)**, written from scratch in pure Rust.
 
@@ -311,6 +311,32 @@ icarus-v2mini save ~/.config/icarus/gaming.toml
 icarus-v2mini apply ~/.config/icarus/gaming.toml
 ```
 
+### Background Daemon (Battery & Auto-Profile Integration)
+*Exceeds OEM Windows driver capabilities:*
+
+```bash
+# Run daemon in terminal (checks every 10 seconds)
+icarus-v2mini daemon --interval 10
+
+# Install & enable auto-start background systemd user service
+icarus-v2mini daemon --install-service
+
+# Check systemd service status
+systemctl --user status icarus-v2mini.service
+```
+
+#### Waybar Integration (`~/.config/waybar/config`)
+The daemon exports real-time battery status to `~/.cache/icarus-v2mini/battery.json`:
+```json
+"custom/mouse_battery": {
+    "format": "{}",
+    "return-type": "json",
+    "exec": "cat ~/.cache/icarus-v2mini/battery.json 2>/dev/null",
+    "interval": 5,
+    "tooltip": true
+}
+```
+
 ---
 
 ## Protocol & Reverse Engineering Deep Dive
@@ -368,9 +394,11 @@ icarus-v2mini-linux/
 │   ├── protocol.rs     # Packet serialization, register mapping, opcodes, and checksums
 │   ├── config.rs       # Profile data structures, TOML serialization, and validation
 │   ├── dpi.rs          # PixArt PAW3395 register lookup tables and bidirectional conversions
+│   ├── daemon.rs       # Background daemon, battery JSON export & auto-profile watcher
 │   └── gui.rs          # egui / eframe desktop application, 3D visualizer & state machine
 ├── tests/
 │   ├── test_config.rs   # Unit tests for profile loading, saving, and defaults
+│   ├── test_daemon.rs   # Unit tests for battery export schema & auto-profile rules
 │   ├── test_dpi.rs      # Precision tests for PAW3395 lookup table mappings
 │   └── test_protocol.rs # Integration tests for 17-byte HID packets & checksum verification
 ├── assets/

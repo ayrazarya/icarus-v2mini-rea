@@ -4,7 +4,7 @@
 //! software. Communicates directly with the mouse over HID to configure
 //! DPI, polling rate, LED effects, button mappings, and sensor features.
 
-use icarus_v2mini::{config, device, dpi, gui};
+use icarus_v2mini::{config, daemon, device, dpi, gui};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -117,9 +117,53 @@ enum Commands {
         file: String,
     },
 
-    /// Generate a udev rules file for non-root access
+    /// Trigger 2.4G wireless dongle pairing mode (Match)
+    Pair {
+        /// Optional Client ID (CID)
+        #[arg(long)]
+        cid: Option<u8>,
+        /// Optional Manufacturer ID (MID)
+        #[arg(long)]
+        mid: Option<u8>,
+    },
+
+    /// Toggle Long Range wireless mode (RF power boost)
+    #[command(name = "long-range")]
+    LongRange {
+        /// "on" or "off"
+        #[arg(value_name = "STATE")]
+        state: Option<String>,
+    },
+
+    /// Enter USB firmware upgrade mode (ISP/IAP bootloader)
+    Dfu,
+
+    /// Generate or install udev rules for non-root access
     #[command(name = "udev-rule")]
-    UdevRule,
+    UdevRule {
+        /// Install rules directly to /etc/udev/rules.d/99-icarus-mouse.rules using sudo
+        #[arg(long)]
+        install: bool,
+    },
+
+    /// Run background daemon for Waybar/desktop battery integration and auto-profile switching
+    Daemon {
+        /// Battery polling interval in seconds (default: 10)
+        #[arg(long, default_value = "10")]
+        interval: u64,
+
+        /// Disable desktop notifications
+        #[arg(long)]
+        no_notify: bool,
+
+        /// Disable auto-profile switching
+        #[arg(long)]
+        no_auto_profile: bool,
+
+        /// Install and enable background systemd user service (~/.config/systemd/user/icarus-v2mini.service)
+        #[arg(long)]
+        install_service: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -197,7 +241,23 @@ fn main() -> Result<()> {
             Ok(())
         }
         Some(Commands::List) => cmd_list(),
-        Some(Commands::UdevRule) => cmd_udev_rule(),
+        Some(Commands::UdevRule { install }) => cmd_udev_rule(install),
+        Some(Commands::Daemon {
+            interval,
+            no_notify,
+            no_auto_profile,
+            install_service,
+        }) => {
+            if install_service {
+                daemon::install_systemd_user_service()
+            } else {
+                let config = daemon::DaemonConfig::new()
+                    .with_interval(interval)
+                    .with_notifications(!no_notify)
+                    .with_auto_profile(!no_auto_profile);
+                daemon::run_daemon(&config)
+            }
+        }
         // All other commands need the device connected
         Some(cmd) => {
             let dev = device::IcarusDevice::open()?;
@@ -220,7 +280,13 @@ fn main() -> Result<()> {
                 Commands::Battery => cmd_battery(&dev),
                 Commands::Apply { file } => cmd_apply(&dev, &file),
                 Commands::Save { file } => cmd_save(&dev, &file),
-                Commands::Gui | Commands::List | Commands::UdevRule => unreachable!(),
+                Commands::Pair { cid, mid } => cmd_pair(&dev, cid, mid),
+                Commands::LongRange { state } => cmd_long_range(&dev, state),
+                Commands::Dfu => cmd_dfu(&dev),
+                Commands::Gui
+                | Commands::List
+                | Commands::UdevRule { .. }
+                | Commands::Daemon { .. } => unreachable!(),
             }
         }
     }
@@ -788,28 +854,126 @@ fn cmd_save(dev: &device::IcarusDevice, file: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_udev_rule() -> Result<()> {
+fn cmd_pair(dev: &device::IcarusDevice, cid: Option<u8>, mid: Option<u8>) -> Result<()> {
+    println!(
+        "{}",
+        "Initiating 2.4G wireless dongle pairing (Match)..."
+            .cyan()
+            .bold()
+    );
+    dev.pair_dongle(cid, mid)?;
+    println!(
+        "{} Pairing command successfully transmitted to dongle!",
+        "[OK]".green().bold()
+    );
+    println!("Please place your mouse close to the dongle (< 10cm) and turn it on.");
+    if let Ok(status) = dev.read_dongle_pair_status() {
+        println!("Pairing status response: 0x{:02X}", status);
+    }
+    Ok(())
+}
+
+fn cmd_long_range(dev: &device::IcarusDevice, state: Option<String>) -> Result<()> {
+    match state {
+        None => {
+            let current = dev.read_long_range_mode()?;
+            println!(
+                "Long Range Mode (High RF Power): {}",
+                if current {
+                    "on".green().bold()
+                } else {
+                    "off".yellow()
+                }
+            );
+        }
+        Some(s) => {
+            let enable = parse_on_off(&s)?;
+            dev.set_long_range_mode(enable)?;
+            println!(
+                "{} Long Range Mode set to {}",
+                "[OK]".green().bold(),
+                if enable { "on".green() } else { "off".yellow() }
+            );
+        }
+    }
+    Ok(())
+}
+
+fn cmd_dfu(dev: &device::IcarusDevice) -> Result<()> {
+    println!(
+        "{}",
+        "Sending command to enter USB ISP/DFU firmware update mode..."
+            .yellow()
+            .bold()
+    );
+    dev.enter_firmware_update_mode()?;
+    println!(
+        "{} Device entered firmware upgrade mode.",
+        "[OK]".green().bold()
+    );
+    Ok(())
+}
+
+fn cmd_udev_rule(install: bool) -> Result<()> {
     let rule = r#"# ICARUS V2 MINI Gaming Mouse — allow non-root HID access
 # Place this file at /etc/udev/rules.d/99-icarus-mouse.rules
 
 # USB wired
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3554", ATTRS{idProduct}=="f511", MODE="0666"
-SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f511", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3554", ATTRS{idProduct}=="f511", MODE="0666", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f511", MODE="0666", TAG+="uaccess"
 
 # 2.4G Wireless dongle
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3554", ATTRS{idProduct}=="f512", MODE="0666"
-SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f512", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3554", ATTRS{idProduct}=="f512", MODE="0666", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f512", MODE="0666", TAG+="uaccess"
 
 # 4G Wireless dongle
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3554", ATTRS{idProduct}=="f510", MODE="0666"
-SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f510", MODE="0666"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3554", ATTRS{idProduct}=="f510", MODE="0666", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="3554", ATTR{idProduct}=="f510", MODE="0666", TAG+="uaccess"
 "#;
+
+    if install {
+        println!(
+            "{}",
+            "Installing udev rules to /etc/udev/rules.d/99-icarus-mouse.rules..."
+                .cyan()
+                .bold()
+        );
+        let target_path = "/etc/udev/rules.d/99-icarus-mouse.rules";
+        let status = std::process::Command::new("sudo")
+            .arg("sh")
+            .arg("-c")
+            .arg(format!(
+                "echo '{}' > {} && udevadm control --reload-rules && udevadm trigger",
+                rule, target_path
+            ))
+            .status();
+
+        match status {
+            Ok(s) if s.success() => {
+                println!(
+                    "{} Udev rules installed and reloaded successfully!",
+                    "[OK]".green().bold()
+                );
+                println!("You can now use ICARUS V2 MINI without root permissions.");
+                return Ok(());
+            }
+            _ => {
+                println!(
+                    "{}",
+                    "Failed to run sudo command automatically. You can install it manually:"
+                        .yellow()
+                );
+            }
+        }
+    }
 
     println!("{}", "udev rule for ICARUS V2 MINI".bold().cyan());
     println!("{}", "─".repeat(50));
     println!("{}", rule);
     println!("{}", "─".repeat(50));
-    println!("\nTo install:");
+    println!("\nTo install automatically:");
+    println!("  sudo icarus-v2mini udev-rule --install");
+    println!("\nOr install manually:");
     println!(
         "  {} | sudo tee /etc/udev/rules.d/99-icarus-mouse.rules",
         "icarus-v2mini udev-rule".bold()

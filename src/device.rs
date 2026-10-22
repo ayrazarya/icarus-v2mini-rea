@@ -503,6 +503,71 @@ impl IcarusDevice {
         Ok(())
     }
 
+    /// Set Long Range wireless mode (RF power boost).
+    pub fn set_long_range_mode(&self, enabled: bool) -> Result<()> {
+        let cmd = Command::set_long_range_mode(enabled);
+        self.send_write(&cmd)?;
+        Ok(())
+    }
+
+    /// Read Long Range wireless mode status.
+    pub fn read_long_range_mode(&self) -> Result<bool> {
+        let cmd = Command::read_long_range_mode();
+        let resp = self.send_command(&cmd)?;
+        Ok(resp.payload().first().copied().unwrap_or(0) != 0)
+    }
+
+    /// Enter 2.4G dongle pairing mode (Match).
+    pub fn pair_dongle(&self, cid: Option<u8>, mid: Option<u8>) -> Result<()> {
+        let cid = cid.unwrap_or(0x51); // 0x51 = 81 from Config.ini CID="ODE="
+        let mid = mid.unwrap_or(0x01); // 0x01 from Config.ini MID="01"
+        let cmd = Command::enter_dongle_pair_with_cid_mid(cid, mid);
+        self.send_write(&cmd)?;
+        Ok(())
+    }
+
+    /// Read 2.4G dongle pairing status.
+    pub fn read_dongle_pair_status(&self) -> Result<u8> {
+        let cmd = Command::read_dongle_pair_status();
+        let resp = self.send_command(&cmd)?;
+        Ok(resp.payload().first().copied().unwrap_or(0))
+    }
+
+    /// Enter USB firmware upgrade mode (ISP/IAP bootloader).
+    pub fn enter_firmware_update_mode(&self) -> Result<()> {
+        let cmd = Command::enter_update_mode();
+        self.send_write(&cmd)?;
+        Ok(())
+    }
+
+    /// Set 4K Dongle RGB configuration.
+    pub fn set_4k_dongle_rgb(&self, payload: &[u8]) -> Result<()> {
+        let cmd = Command::set_4k_dongle_rgb(payload);
+        self.send_write(&cmd)?;
+        Ok(())
+    }
+
+    /// Read 4K Dongle RGB configuration.
+    pub fn read_4k_dongle_rgb(&self) -> Result<Vec<u8>> {
+        let cmd = Command::read_4k_dongle_rgb();
+        let resp = self.send_command(&cmd)?;
+        Ok(resp.payload().to_vec())
+    }
+
+    /// Set Dongle RGB Bar mode.
+    pub fn set_dongle_rgb_bar(&self, payload: &[u8]) -> Result<()> {
+        let cmd = Command::set_dongle_rgb_bar_mode(payload);
+        self.send_write(&cmd)?;
+        Ok(())
+    }
+
+    /// Read Dongle RGB Bar mode.
+    pub fn read_dongle_rgb_bar(&self) -> Result<Vec<u8>> {
+        let cmd = Command::read_dongle_rgb_bar_mode();
+        let resp = self.send_command(&cmd)?;
+        Ok(resp.payload().to_vec())
+    }
+
     // ── Composite operations ─────────────────────────────────────────
 
     /// Read the complete current configuration from the mouse.
@@ -513,6 +578,9 @@ impl IcarusDevice {
 
         if let Ok(rate) = self.read_polling_rate() {
             config.polling_rate = rate;
+        }
+        if let Ok(long_range) = self.read_long_range_mode() {
+            config.long_range_mode = long_range;
         }
         if let Ok(stage) = self.read_active_dpi_stage()
             && (stage as usize) < config.dpi_stages.len()
@@ -659,6 +727,7 @@ impl IcarusDevice {
         self.set_ripple_control(cfg.ripple_control)?;
         self.set_debounce(cfg.debounce_ms)?;
         self.set_sensor_sleep(cfg.sensor_sleep_seconds)?;
+        let _ = self.set_long_range_mode(cfg.long_range_mode);
 
         // 8. Write button mappings
         for (i, btn) in cfg.buttons.iter().enumerate().take(6) {

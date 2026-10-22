@@ -21,6 +21,18 @@ pub const CMD_QUERY_BATTERY: u8 = 0x04;
 pub const CMD_PC_DRIVER_STATUS: u8 = 0x02;
 pub const CMD_APPLY_CONFIG: u8 = 0x0F;
 
+// ── Extended OEM Opcodes (Decompiled from HIDUsb.dll) ───────────────
+pub const CMD_DONGLE_PAIR_CID_MID: u8 = 0x05;
+pub const CMD_ENTER_DONGLE_PAIR: u8 = 0x06;
+pub const CMD_READ_DONGLE_PAIR_STATUS: u8 = 0x09;
+pub const CMD_ENTER_UPDATE_MODE: u8 = 0x0E;
+pub const CMD_SET_4K_DONGLE_RGB: u8 = 0x14;
+pub const CMD_GET_4K_DONGLE_RGB: u8 = 0x15;
+pub const CMD_SET_LONGRANGE_MODE: u8 = 0x16;
+pub const CMD_GET_LONGRANGE_MODE: u8 = 0x17;
+pub const CMD_SET_DONGLE_RGB_BAR: u8 = 0x18;
+pub const CMD_GET_DONGLE_RGB_BAR: u8 = 0x19;
+
 #[allow(dead_code)]
 pub mod addr {
     // ── Flash Data Map Registers (Decompiled from HIDUsb.dll & functionset.obj) ─
@@ -575,4 +587,195 @@ impl Command {
         data[16] = Self::checksum(&data[..16]);
         Self { data }
     }
+
+    // ── Extended Commands (2.4G Pairing, Long Range Mode, 4K Dongle, Update) ───
+
+    /// Enter 2.4G dongle pairing mode (opcode 0x06).
+    pub fn enter_dongle_pair() -> Self {
+        let mut data = [0u8; REPORT_SIZE];
+        data[0] = REPORT_ID;
+        data[1] = CMD_ENTER_DONGLE_PAIR;
+        data[16] = Self::checksum(&data[..16]);
+        Self { data }
+    }
+
+    /// Enter 2.4G dongle pairing with specific CID and MID (opcode 0x05).
+    pub fn enter_dongle_pair_with_cid_mid(cid: u8, mid: u8) -> Self {
+        let mut data = [0u8; REPORT_SIZE];
+        data[0] = REPORT_ID;
+        data[1] = CMD_DONGLE_PAIR_CID_MID;
+        data[5] = 0x02;
+        data[6] = cid;
+        data[7] = mid;
+        data[16] = Self::checksum(&data[..16]);
+        Self { data }
+    }
+
+    /// Read 2.4G dongle pairing status (opcode 0x09).
+    pub fn read_dongle_pair_status() -> Self {
+        let mut data = [0u8; REPORT_SIZE];
+        data[0] = REPORT_ID;
+        data[1] = CMD_READ_DONGLE_PAIR_STATUS;
+        data[16] = Self::checksum(&data[..16]);
+        Self { data }
+    }
+
+    /// Set Long Range wireless mode (opcode 0x16, RF transmission power boost).
+    pub fn set_long_range_mode(enabled: bool) -> Self {
+        let mut data = [0u8; REPORT_SIZE];
+        data[0] = REPORT_ID;
+        data[1] = CMD_SET_LONGRANGE_MODE;
+        data[5] = 0x01;
+        data[6] = if enabled { 0x01 } else { 0x00 };
+        data[16] = Self::checksum(&data[..16]);
+        Self { data }
+    }
+
+    /// Read Long Range wireless mode status (opcode 0x17).
+    pub fn read_long_range_mode() -> Self {
+        let mut data = [0u8; REPORT_SIZE];
+        data[0] = REPORT_ID;
+        data[1] = CMD_GET_LONGRANGE_MODE;
+        data[16] = Self::checksum(&data[..16]);
+        Self { data }
+    }
+
+    /// Enter USB firmware upgrade mode (opcode 0x0E, ISP/IAP).
+    pub fn enter_update_mode() -> Self {
+        let mut data = [0u8; REPORT_SIZE];
+        data[0] = REPORT_ID;
+        data[1] = CMD_ENTER_UPDATE_MODE;
+        data[16] = Self::checksum(&data[..16]);
+        Self { data }
+    }
+
+    /// Set 4K Dongle RGB parameters (opcode 0x14).
+    pub fn set_4k_dongle_rgb(payload: &[u8]) -> Self {
+        let mut data = [0u8; REPORT_SIZE];
+        data[0] = REPORT_ID;
+        data[1] = CMD_SET_4K_DONGLE_RGB;
+        let copy_len = payload.len().min(10);
+        data[5] = copy_len as u8;
+        data[6..6 + copy_len].copy_from_slice(&payload[..copy_len]);
+        data[16] = Self::checksum(&data[..16]);
+        Self { data }
+    }
+
+    /// Query 4K Dongle RGB parameters (opcode 0x15).
+    pub fn read_4k_dongle_rgb() -> Self {
+        let mut data = [0u8; REPORT_SIZE];
+        data[0] = REPORT_ID;
+        data[1] = CMD_GET_4K_DONGLE_RGB;
+        data[16] = Self::checksum(&data[..16]);
+        Self { data }
+    }
+
+    /// Set Dongle RGB Bar mode (opcode 0x18).
+    pub fn set_dongle_rgb_bar_mode(payload: &[u8]) -> Self {
+        let mut data = [0u8; REPORT_SIZE];
+        data[0] = REPORT_ID;
+        data[1] = CMD_SET_DONGLE_RGB_BAR;
+        let copy_len = payload.len().min(10);
+        data[5] = copy_len as u8;
+        data[6..6 + copy_len].copy_from_slice(&payload[..copy_len]);
+        data[16] = Self::checksum(&data[..16]);
+        Self { data }
+    }
+
+    /// Query Dongle RGB Bar mode (opcode 0x19).
+    pub fn read_dongle_rgb_bar_mode() -> Self {
+        let mut data = [0u8; REPORT_SIZE];
+        data[0] = REPORT_ID;
+        data[1] = CMD_GET_DONGLE_RGB_BAR;
+        data[16] = Self::checksum(&data[..16]);
+        Self { data }
+    }
+}
+
+// ── Hardware On-Board Macro Buffer Serialization (MacroKeyToBuffer / BufferToMacroKey) ──
+
+/// Serialize a MacroItem into the exact on-board binary layout decompiled from `MacroKeyToBuffer` in `HIDUsb.dll`.
+pub fn macro_to_hardware_buffer(name: &str, events: &[crate::config::MacroEvent]) -> Vec<u8> {
+    let mut buf = vec![0u8; 32];
+    let name_bytes = name.as_bytes();
+    let name_len = name_bytes.len().min(30);
+    buf[0] = name_len as u8;
+    buf[1..1 + name_len].copy_from_slice(&name_bytes[..name_len]);
+
+    let event_count = events.len().min(64);
+    buf[31] = event_count as u8;
+
+    for event in &events[..event_count] {
+        let mut b0 = 0u8;
+        match event.event_type {
+            crate::config::MacroEventType::KeyDown => b0 |= 0x80,
+            crate::config::MacroEventType::KeyUp => b0 |= 0x40,
+            crate::config::MacroEventType::Delay => {}
+        }
+        let usage = event
+            .key
+            .trim_start_matches("Key_")
+            .trim_start_matches("0x")
+            .parse::<u8>()
+            .unwrap_or(0x04);
+        let delay = (event.delay_ms as u16).to_le_bytes();
+        buf.push(b0);
+        buf.push(0x00); // modifier
+        buf.push(usage); // usage
+        buf.push(delay[0]);
+        buf.push(delay[1]);
+    }
+
+    let chk = Command::checksum(&buf);
+    buf.push(chk);
+    buf
+}
+
+/// Deserialize an on-board binary macro buffer into a MacroItem (decompiled from `BufferToMacroKey`).
+pub fn hardware_buffer_to_macro(buf: &[u8]) -> Option<crate::config::MacroItem> {
+    if buf.len() < 32 {
+        return None;
+    }
+    let name_len = (buf[0] as usize).min(30);
+    let name = String::from_utf8_lossy(&buf[1..1 + name_len])
+        .trim_matches('\0')
+        .to_string();
+    let event_count = buf[31] as usize;
+    if buf.len() < 32 + event_count * 5 {
+        return None;
+    }
+
+    let mut events = Vec::with_capacity(event_count);
+    for i in 0..event_count {
+        let offset = 32 + i * 5;
+        let b0 = buf[offset];
+        let usage = buf[offset + 2];
+        let delay_ms = u16::from_le_bytes([buf[offset + 3], buf[offset + 4]]) as u32;
+
+        let event_type = if (b0 & 0x80) != 0 {
+            crate::config::MacroEventType::KeyDown
+        } else if (b0 & 0x40) != 0 {
+            crate::config::MacroEventType::KeyUp
+        } else {
+            crate::config::MacroEventType::Delay
+        };
+
+        events.push(crate::config::MacroEvent {
+            event_type,
+            key: format!("Key_0x{:02X}", usage),
+            delay_ms,
+        });
+    }
+
+    Some(crate::config::MacroItem {
+        name: if name.is_empty() {
+            "Imported_Macro".to_string()
+        } else {
+            name
+        },
+        repeat_mode: crate::config::MacroRepeatMode::Times(1),
+        auto_insert_delay: true,
+        default_delay_ms: 10,
+        events,
+    })
 }

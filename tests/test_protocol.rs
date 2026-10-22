@@ -145,3 +145,92 @@ fn test_write_dpi_stage_ext_10bit() {
     assert_eq!(cmd.data[8], 0x80);
     assert_eq!(cmd.data[9], Command::checksum(&[0x07, 0x07, 0x80]));
 }
+
+#[test]
+fn test_extended_dongle_and_power_commands() {
+    use icarus_v2mini::protocol::{
+        CMD_DONGLE_PAIR_CID_MID, CMD_ENTER_DONGLE_PAIR, CMD_ENTER_UPDATE_MODE,
+        CMD_GET_LONGRANGE_MODE, CMD_READ_DONGLE_PAIR_STATUS, CMD_SET_LONGRANGE_MODE,
+    };
+
+    // 1. Dongle Pairing
+    let pair_simple = Command::enter_dongle_pair();
+    assert_eq!(pair_simple.data[0], REPORT_ID);
+    assert_eq!(pair_simple.data[1], CMD_ENTER_DONGLE_PAIR);
+    assert_eq!(
+        pair_simple.data[16],
+        Command::checksum(&pair_simple.data[..16])
+    );
+
+    let pair_cid_mid = Command::enter_dongle_pair_with_cid_mid(0x51, 0x01);
+    assert_eq!(pair_cid_mid.data[0], REPORT_ID);
+    assert_eq!(pair_cid_mid.data[1], CMD_DONGLE_PAIR_CID_MID);
+    assert_eq!(pair_cid_mid.data[5], 0x02);
+    assert_eq!(pair_cid_mid.data[6], 0x51);
+    assert_eq!(pair_cid_mid.data[7], 0x01);
+    assert_eq!(
+        pair_cid_mid.data[16],
+        Command::checksum(&pair_cid_mid.data[..16])
+    );
+
+    let pair_status = Command::read_dongle_pair_status();
+    assert_eq!(pair_status.data[0], REPORT_ID);
+    assert_eq!(pair_status.data[1], CMD_READ_DONGLE_PAIR_STATUS);
+
+    // 2. Long Range Mode (RF power boost)
+    let lr_on = Command::set_long_range_mode(true);
+    assert_eq!(lr_on.data[0], REPORT_ID);
+    assert_eq!(lr_on.data[1], CMD_SET_LONGRANGE_MODE);
+    assert_eq!(lr_on.data[5], 0x01);
+    assert_eq!(lr_on.data[6], 0x01);
+
+    let lr_off = Command::set_long_range_mode(false);
+    assert_eq!(lr_off.data[6], 0x00);
+
+    let lr_read = Command::read_long_range_mode();
+    assert_eq!(lr_read.data[1], CMD_GET_LONGRANGE_MODE);
+
+    // 3. Firmware Update ISP Mode
+    let dfu = Command::enter_update_mode();
+    assert_eq!(dfu.data[0], REPORT_ID);
+    assert_eq!(dfu.data[1], CMD_ENTER_UPDATE_MODE);
+    assert_eq!(dfu.data[16], Command::checksum(&dfu.data[..16]));
+}
+
+#[test]
+fn test_hardware_macro_buffer_serialization_roundtrip() {
+    use icarus_v2mini::config::{MacroEvent, MacroEventType};
+    use icarus_v2mini::protocol::{hardware_buffer_to_macro, macro_to_hardware_buffer};
+
+    let events = vec![
+        MacroEvent {
+            event_type: MacroEventType::KeyDown,
+            key: "Key_0x04".into(),
+            delay_ms: 0,
+        },
+        MacroEvent {
+            event_type: MacroEventType::Delay,
+            key: String::new(),
+            delay_ms: 50,
+        },
+        MacroEvent {
+            event_type: MacroEventType::KeyUp,
+            key: "Key_0x04".into(),
+            delay_ms: 0,
+        },
+    ];
+
+    let buf = macro_to_hardware_buffer("Burst_Fire", &events);
+    assert!(buf.len() >= 32);
+    assert_eq!(buf[0], 10); // length of "Burst_Fire"
+    assert_eq!(&buf[1..11], b"Burst_Fire");
+    assert_eq!(buf[31], 3); // 3 events
+
+    let parsed = hardware_buffer_to_macro(&buf).expect("Parse hardware macro buffer");
+    assert_eq!(parsed.name, "Burst_Fire");
+    assert_eq!(parsed.events.len(), 3);
+    assert_eq!(parsed.events[0].event_type, MacroEventType::KeyDown);
+    assert_eq!(parsed.events[1].event_type, MacroEventType::Delay);
+    assert_eq!(parsed.events[1].delay_ms, 50);
+    assert_eq!(parsed.events[2].event_type, MacroEventType::KeyUp);
+}
