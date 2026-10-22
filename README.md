@@ -7,7 +7,7 @@
 [![GUI](https://img.shields.io/badge/GUI-egui_%2F_eframe-blueviolet.svg)]()
 [![Version](https://img.shields.io/badge/Release-v0.2.0-brightgreen.svg)](https://github.com/ayrazarya/icarus-v2mini-rea/releases)
 
-A native, lightweight, and high-performance Linux driver, configuration utility, and desktop GUI for the **ICARUS V2 MINI** ultralight wireless gaming mouse, written from scratch in pure Rust.
+A native, lightweight, and high-performance Linux driver, configuration utility, and desktop GUI for the **ICARUS V2 MINI** ultralight wireless gaming mouse by **[Press Play](https://pressplayid.com/)**, written from scratch in pure Rust.
 
 Reverse-engineered directly from the official Windows vendor software (`ICARUS V2 MINI_v1.0.1.2_setup.exe` & `HIDUsb.dll`). It communicates directly with the mouse and 2.4G/4G wireless receivers via raw Linux HID endpoints (`hidapi`) without Wine, Windows VMs, Electron, or heavy runtime dependencies.
 
@@ -51,6 +51,27 @@ Macro keystroke recorder and interactive visual timeline sequencer with reordera
 <p align="center">
   <img src="assets/UI-Preview/Settings.png" alt="Settings and Profile Management" width="850">
 </p>
+
+---
+
+## Hardware Documentation & Official Resources
+
+### Quick Start & Hardware Layout Guide
+
+Below is the hardware control overview and quick start reference from the official user manual:
+
+<p align="center">
+  <img src="assets/ManualGuide/ManualGuide.png" alt="ICARUS V2 MINI Hardware Manual Guide" width="850">
+</p>
+
+### Official Manual & Vendor Driver Downloads
+
+| Resource | Description | Link |
+|---|---|---|
+| **Official User Manual (PDF)** | Complete manufacturer manual, connection instructions, and hardware specs | [Google Drive View](https://drive.google.com/file/d/1kOBQNL2h7rpvUaaqBG93QY5Y8SZC2IE1/view) |
+| **Official Windows Driver (Setup)** | Original OEM software installer archive (`ICARUS V2 MINI_v1.0.1.2_setup.exe`) | [Google Drive Download](https://drive.google.com/file/d/17_9BynDQM6Is3RK7znR3YGmAVbIj7niy/view) |
+| **Press Play Software & Manuals Portal** | Official manufacturer driver, software, and firmware download repository | [Press Play Software & Manuals](https://pressplayid.com/pages/press-play-softwares-drivers-and-manuals) |
+| **Press Play Official Website** | Official brand homepage and hardware store | [pressplayid.com](https://pressplayid.com/) |
 
 ---
 
