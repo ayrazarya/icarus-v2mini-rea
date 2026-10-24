@@ -5,11 +5,18 @@
 [![Platform](https://img.shields.io/badge/Platform-Linux_Native_(X11%20%2F%20Wayland)-green.svg)]()
 [![Hardware](https://img.shields.io/badge/Sensor-PixArt_PAW3395-red.svg)]()
 [![GUI](https://img.shields.io/badge/GUI-egui_%2F_eframe-blueviolet.svg)]()
-[![Version](https://img.shields.io/badge/Release-v0.3.0-brightgreen.svg)](https://github.com/ayrazarya/icarus-v2mini-rea/releases)
+[![Version](https://img.shields.io/badge/Release-v0.4.0-brightgreen.svg)](https://github.com/ayrazarya/icarus-v2mini-rea/releases)
 
-A native, lightweight, and high-performance Linux driver, configuration utility, and desktop GUI for the **ICARUS V2 MINI** ultralight wireless gaming mouse by **[Press Play](https://pressplayid.com/)**, written from scratch in pure Rust.
+A native, lightweight, and high-performance Linux driver, CLI configuration utility, background daemon, and desktop GUI for the **ICARUS V2 MINI** ultralight wireless gaming mouse by **[Press Play](https://pressplayid.com/)**, written from scratch in pure, memory-safe Rust (`unsafe_code = "forbid"`).
 
-Reverse-engineered directly from the official Windows vendor software (`ICARUS V2 MINI_v1.0.1.2_setup.exe` & `HIDUsb.dll`). It communicates directly with the mouse and 2.4G/4G wireless receivers via raw Linux HID endpoints (`hidapi`) without Wine, Windows VMs, Electron, or heavy runtime dependencies.
+Reverse-engineered directly from the official Windows vendor software (`ICARUS V2 MINI_v1.0.1.2_setup.exe` & `HIDUsb.dll`). It communicates directly with the mouse and 2.4G/4K wireless receivers via raw Linux HID endpoints (`hidapi`) without Wine, Windows VMs, Electron, or heavy runtime dependencies.
+
+> **Companion Project Documentation:**
+> - [**Architecture & Code Structure (`docs/ARCHITECTURE.md`)**](docs/ARCHITECTURE.md) — Deep dive into modular DDD layers, data flows, and runtime performance optimizations.
+> - [**USB HID Protocol & EEPROM Specification (`docs/PROTOCOL.md`)**](docs/PROTOCOL.md) — Complete 17-byte packet format, opcodes, checksums, and PAW3395 register maps.
+> - [**Coding Standards & Contributing Guide (`CONTRIBUTING.md`)**](CONTRIBUTING.md) — How to code, extend hardware commands/GUI tabs, and pass QA verification.
+> - [**Examples & Diagnostic Tools (`examples/README.md`)**](examples/README.md) — Sample `.toml` profiles and low-level hardware DPI register probe.
+> - [**Changelog (`CHANGELOG.md`)**](CHANGELOG.md) — Full version history and release notes.
 
 ---
 
@@ -18,35 +25,35 @@ Reverse-engineered directly from the official Windows vendor software (`ICARUS V
 The desktop application is built with `egui` and `eframe`, providing hardware-accelerated 60+ FPS rendering under both Wayland and X11 with minimal RAM consumption (< 30 MB).
 
 ### Tab 1: Button Remapping & Debounce Tester
-Interactive 3D mouse visualizer with calibrated button callouts, action binding editor, hardware debounce slider (0–20 ms), and a live click tester with CPS counter, interval delta, and double-click detector.
+Interactive 3D mouse visualizer with calibrated button callouts, action binding editor, hardware debounce slider (0–20 ms in 2 ms steps), and a live click tester with CPS counter, interval delta, and double-click detector.
 
 <p align="center">
   <img src="assets/UI-Preview/Buttons.png" alt="Buttons and Debounce Tester" width="850">
 </p>
 
 ### Tab 2: DPI, Sensor Calibration & Spectrum Bar
-6-stage DPI adjustment with clickable milestone ticks, free-text custom DPI input (50–26,000 DPI in 50 DPI steps), Single DPI Lock (competitive FPS mode), quick esports presets, and sensor tuning (LOD, Polling Rate, Angle Snapping, Motion Sync).
+6-stage DPI adjustment with clickable milestone ticks, free-text custom DPI input (50–26,000 DPI in 50 DPI steps), bijective 10-bit Separate X/Y DPI calibration, Single DPI Lock (competitive FPS mode), quick esports presets, and sensor tuning (LOD, Polling Rate, Angle Snapping, Motion Sync, Ripple Control).
 
 <p align="center">
   <img src="assets/UI-Preview/DPI-Sensors.png" alt="DPI and Sensor Configuration" width="850">
 </p>
 
 ### Tab 3: Lighting & Live Real-Time Auto-Apply
-RGB lighting modes (Solid, Breathing, Neon, Off), 10-level brightness and speed sliders, sleep idle timeout, 14 reverse-engineered ColorBoard swatches (A–N), esports color presets, custom RGB sliders, and live instant preview that synchronizes with the physical mouse in real time.
+RGB lighting modes (Solid, Breathing, Neon, Off), 10-level brightness and speed sliders, sleep idle timeout, 14 reverse-engineered ColorBoard swatches (A–N), esports color presets, custom RGB sliders, 4K wireless dongle RGB control, and throttled (`120ms`) live instant preview that synchronizes with the physical mouse in real time.
 
 <p align="center">
   <img src="assets/UI-Preview/Lighting.png" alt="Lighting and Live Auto-Apply" width="850">
 </p>
 
 ### Tab 4: Macro Recording & Timeline Sequencer
-Macro keystroke recorder and interactive visual timeline sequencer with reorderable events, delay adjustments, loop modes, and binding to mouse buttons.
+Live macro keystroke & mouse-click recorder and interactive visual timeline sequencer with reorderable events, delay adjustments (`1..=65535` ms), loop modes, 64-event hardware slot protection, and direct EEPROM flashing (`0x0300` base).
 
 <p align="center">
   <img src="assets/UI-Preview/Macro.png" alt="Macro Timeline Sequencer" width="850">
 </p>
 
-### Tab 5: Settings, 2.4G Dongle Pairing & Profile Management
-2.4G wireless pairing tool, native Linux GTK file selection dialog (`zenity`) for custom profile import/export, Save As support, quick filename presets, and automatic udev rule generation.
+### Tab 5: Settings, Bilingual Language Selector (EN/ID), 2.4G Dongle Pairing & Profile Management
+Full bilingual support (English and Bahasa Indonesia) with zero language mixing or overlapping strings (switchable instantly via top header `🌐 EN` / `🌐 ID` or Settings tab), 2.4G wireless pairing tool, Long-Range RF boost, ISP firmware flasher, per-game Auto-Profile rules, native Linux GTK file selection dialog (`zenity`) for custom profile import/export, and automatic udev rule generation.
 
 <p align="center">
   <img src="assets/UI-Preview/Settings.png" alt="Settings and Profile Management" width="850">
@@ -77,24 +84,23 @@ Below is the hardware control overview and quick start reference from the offici
 
 ## Keyboard Shortcuts
 
-The GUI supports global keyboard shortcuts for fast navigation:
+The GUI supports global keyboard shortcuts for fast navigation (automatically suspended while capturing a button key binding or recording a live macro):
 
 | Shortcut | Action | Description |
 |---|---|---|
 | `Ctrl + S` | **Apply Changes** | Writes active configuration to mouse hardware immediately without scrolling. |
 | `Ctrl + R` | **Read from Mouse** | Refreshes hardware status, battery telemetry, and active configuration. |
 | `1` .. `5` or `Ctrl + 1..5` | **Switch Tabs** | Fast navigation across Buttons (`1`), Sensor (`2`), Lighting (`3`), Macro (`4`), and Settings (`5`). |
-| `Esc` | **Cancel / Unfocus** | Surrenders focus from active text fields or cancels profile renaming mode. |
+| `Esc` | **Cancel / Unfocus** | Surrenders focus from active text fields, cancels key binding capture, or exits profile renaming mode. |
 
 ---
 
 ## Features
 
-### PixArt PAW3395 Sensor Accuracy
-- Exact register mapping table (`0x00`–`0xCE` covering 50 to 26,000 DPI) reverse-engineered from vendor driver headers (`driver_sensor.h`).
-- Eliminates sensitivity drift found in linear formulas (e.g., 6,500 DPI correctly maps to register `0x4D`).
-- Granular 50 DPI steps with instant free-text typing.
-- Clickable milestone ticks on the spectrum bar (`400`, `800`, `1.6k`, `3.2k`, `6.4k`, `12k`, `26k`).
+### PixArt PAW3395 Sensor Accuracy & Bijective 10-Bit X/Y DPI
+- Exact register mapping table (`0x00`–`0xCE` for `50`–`10,100` DPI and 10-bit indices up to `0x207` for `26,000` DPI) reverse-engineered from vendor driver headers (`driver_sensor.h`).
+- Eliminates sensitivity drift found in linear formulas (e.g., 6,500 DPI accurately maps to register `0x4D`).
+- **Bijective Independent X/Y DPI (`encode_dpi_xy_10bit` / `decode_dpi_xy_10bit`)**: Losslessly packs independent 10-bit X and Y register indices into the 4-byte EEPROM stage entry without high-byte wrap-around above 12,750 DPI.
 - **Single DPI Lock**: 1-click toggle to lock to a single active DPI stage (disabling others), preventing accidental stage shifts during clutch gameplay.
 - **Quick Presets**: Ready-to-use profiles including Esports Pro (400 - 800 - 1600 - 3200) and Ultra-High Res (800 - 1600 - 2400 - 3200 - 6400).
 
@@ -104,42 +110,25 @@ The GUI supports global keyboard shortcuts for fast navigation:
 - Real-time click delta measurement in milliseconds.
 - Hardware double-click / switch chattering detector flagging intervals below the configured debounce threshold.
 
-### Profile Renaming & Management
-- Rename onboard profiles with custom names (e.g., "Valorant / CS2", "Dota 2 / MOBA", "Work / Daily").
-- Custom names integrated into header profile dropdown.
-- Native GTK/Zenity file picker dialog for importing and exporting `.toml` configuration files.
-
-### Battery & Power Telemetry
+### Battery, Power Telemetry & Offline Wireless Protection
 - Real-time battery percentage read directly from the Nordic nRF52840 MCU and wireless receiver.
 - Automatic USB wired mode detection (PID `0xF511` drawing VBUS power ~4.83V) with live voltage telemetry.
-- Multi-tier battery indicators with low-battery warning alerts.
+- **Fast-Fail Offline Protection**: Detects when the 2.4G/4K wireless mouse is asleep/offline via `read_device_online()` (`Opcode 0x03`), preventing multi-second USB timeout freezes while still allowing local 4K dongle RGB updates.
+- **Automatic USB Hot-Plug Detection**: Automatically connects when a mouse or dongle is plugged in while the GUI or daemon is running.
 
-### 6-Button Remapping
-- Button 1: Left Click
-- Button 2: Right Click
-- Button 3: Middle Click / Scroll Wheel
-- Button 4: Forward Button (Front Side)
-- Button 5: Back Button (Rear Side)
-- Button 6: DPI Switch (Underside of mouse base)
-- Supported actions: Standard clicks, DPI Cycle, DPI Up/Down, Polling Rate Cycle, Media controls, Keyboard scancodes.
-
-### Performance Tuning
-- Polling Rate: 125 Hz, 250 Hz, 500 Hz, 1000 Hz.
-- Lift-Off Distance (LOD): 1 mm (Low) / 2 mm (High).
-- Angle Snapping: Precision line straightening filter.
-- Motion Sync: Synchronizes sensor reports with USB polling intervals.
-- Ripple Control: High-DPI jitter smoothing filter.
-- Debounce Time: Switch debounce filter adjustable from 0 ms to 20 ms.
-
-### Complete RGB & Lighting Control
-- Modes: Solid, Breathing, Neon / Rainbow Cycle, Off.
-- 10-level brightness and 10-level breathing speed sliders.
-- 14 reverse-engineered ColorBoard swatches (A–N) and 6 esports presets.
-- **Live Auto-Apply**: Instant real-time preview updating the physical mouse on color, mode, or slider changes without manual Apply clicks.
-- Configurable sleep timer (10s, 30s, 1m, 2m, 3m, 5m, or Never).
-
-### Command-Line Interface (CLI)
-Headless CLI tool for scripts, terminal users, and window manager keybinds (Hyprland, Sway, i3).
+### 6-Button Remapping & Left-Click Safety Lock
+- **Button 1**: Left Click (protected by OEM-equivalent **Left-Click Safety Lock** across both dropdowns and interactive key capture)
+- **Button 2**: Right Click
+- **Button 3**: Middle Click / Scroll Wheel
+- **Button 4**: Forward Button (Front Side)
+- **Button 5**: Back Button (Rear Side)
+- **Button 6**: DPI Switch (Underside of mouse base)
+- Supported actions:
+  - **Mouse Actions**: Left, Right, Middle, Forward, Back, DPI Cycle.
+  - **Keyboard Bindings**: Interactive `[Press Any Key]` listener supporting standard keys, punctuation, `F1`–`F24`, and modifier combinations (`Ctrl`, `Shift`, `Alt`, `Super/Win`).
+  - **Media Controls**: 16 multimedia & browser functions including Play/Pause, Volume Up/Down, Mute, Next/Prev Track, Stop, Media Player, Browser Back/Forward, Calculator, Web Home, Mail, and My Computer.
+  - **Macro Playback**: Assign to any of the 16 on-board hardware macro slots (`0..15`).
+  - **Rapid Fire Key**: Configurable burst click count (`2..=15`) and interval delay (`5..=255` ms).
 
 ---
 
@@ -150,19 +139,48 @@ Headless CLI tool for scripts, terminal users, and window manager keybinds (Hypr
 | **Vendor ID (VID)** | `0x3554` | ShenZhen F&G Electron Co., Ltd |
 | **USB Wired PID** | `0xF511` | Direct USB-C wired connection (1000Hz, VBUS Power) |
 | **2.4G Wireless PID** | `0xF512` | Standard 2.4G wireless nano dongle |
-| **4G Wireless PID** | `0xF510` | High-speed 4K/4G wireless dongle |
+| **4K Wireless PID** | `0xF510` | High-speed 4K/4G wireless receiver dongle |
 | **Optical Sensor** | PixArt PAW3395 | Up to 26,000 DPI, 650 IPS, 50G acceleration |
-| **Mouse MCU** | Nordic nRF52840 | 32-bit ARM Cortex-M4F, Bluetooth 5 & 2.4GHz proprietary |
+| **Mouse MCU** | Nordic nRF52840 | 32-bit ARM Cortex-M4F, 2.4GHz proprietary |
 | **2.4G Receiver IC** | CX52650N | Low-latency 2.4GHz USB bridge |
-| **4G Receiver IC** | WCH CH32V305 | High-speed USB RISC-V microcontroller |
-| **HID Interface** | Interface 1 | Vendor-defined HID collection, Report ID `0x07` (17-byte payloads) |
+| **4K Receiver IC** | WCH CH32V305 | High-speed USB RISC-V microcontroller |
+| **HID Interface** | Interface 1 | Vendor-defined HID collection, Report ID `0x08` (17-byte frames) |
 
 ---
 
 ## Installation & Setup
 
-### 1. Install System Dependencies
+### Option A: Download Prebuilt Release (`.AppImage` or `.tar.gz`)
 
+Download the latest release from the [**GitHub Releases**](https://github.com/ayrazarya/icarus-v2mini-rea/releases) page:
+
+#### 1. Using Portable AppImage (No Installation Required)
+```bash
+chmod +x icarus-v2mini-v0.4.0-x86_64.AppImage
+
+# Launch GUI directly
+./icarus-v2mini-v0.4.0-x86_64.AppImage
+
+# Or run CLI commands
+./icarus-v2mini-v0.4.0-x86_64.AppImage info
+```
+
+#### 2. Using Prebuilt `.tar.gz` Archive
+```bash
+tar -xzvf icarus-v2mini-v0.4.0-linux-x86_64.tar.gz
+cd icarus-v2mini-v0.4.0-linux-x86_64
+
+# Install binary to ~/.local/bin or /usr/local/bin
+sudo install -Dm755 icarus-v2mini /usr/local/bin/icarus-v2mini
+sudo cp 99-icarus-mouse.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+---
+
+### Option B: Build and Install from Source (Cargo)
+
+#### 1. Install System Dependencies
 Make sure Rust (Cargo) and `libudev` development packages are installed:
 
 ```bash
@@ -179,46 +197,26 @@ sudo dnf install -y gcc systemd-devel zenity
 sudo zypper install -y gcc systemd-devel zenity
 ```
 
-### 2. Build and Install Binary
-
-Clone this repository and compile with Cargo:
-
+#### 2. Compile and Install Binary
 ```bash
-git clone https://github.com/ayrazarya/icarus-v2mini-linux.git
-cd icarus-v2mini-linux
+git clone https://github.com/ayrazarya/icarus-v2mini-rea.git
+cd icarus-v2mini-rea
 
-# Compile release build and install to ~/.cargo/bin
+# Compile optimized LTO release build and install to ~/.cargo/bin
 cargo install --path . --force
 ```
 
-Ensure `~/.cargo/bin` is in your environment `$PATH` (usually handled automatically by `rustup`).
-
-### 3. Setup udev Rules (Non-Root USB Access)
-
-By default, Linux limits raw access to vendor-specific HID interfaces. Install the udev rule to allow standard user access:
-
+#### 3. Setup udev Rules (Non-Root USB Access)
 ```bash
 sudo cp 99-icarus-mouse.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
-
-Alternatively, regenerate the udev rule directly from the binary:
-```bash
-icarus-v2mini udev-rule | sudo tee /etc/udev/rules.d/99-icarus-mouse.rules
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-### 4. Desktop Application Launcher Integration
-
-Install the desktop shortcut and application icon:
-
+#### 4. Desktop Application Launcher Integration
 ```bash
-# Install application icon
 mkdir -p ~/.local/share/icons/hicolor/256x256/apps/
 cp assets/app-icon.png ~/.local/share/icons/hicolor/256x256/apps/icarus-v2mini.png
 
-# Install desktop entry
 mkdir -p ~/.local/share/applications/
 cp icarus-v2mini.desktop ~/.local/share/applications/
 update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
@@ -228,7 +226,7 @@ update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
 
 ## CLI Command Reference
 
-Every hardware parameter can be inspected or modified from the command line without opening the GUI.
+Every hardware parameter can be inspected or modified from the command line without opening the GUI. Standalone CLI register commands automatically commit changes to hardware memory.
 
 ### Device Telemetry & Battery
 ```bash
@@ -242,233 +240,160 @@ icarus-v2mini info
 icarus-v2mini battery
 ```
 
-*Example `battery` output:*
-```
-ICARUS V2 MINI Battery Status:
-  Level: 100% [Charging / USB Mode] (4830 mV)
-```
-
-### Polling Rate
+### Polling Rate & Sensor Tuning
 ```bash
-# Check current polling rate
+# Query or set polling rate (125, 250, 500, 1000)
 icarus-v2mini rate
-
-# Set polling rate to 1000Hz (options: 125, 250, 500, 1000)
 icarus-v2mini rate 1000
+
+# Set Lift-Off Distance (low = 1mm, high = 2mm)
+icarus-v2mini lod low
+
+# Angle Snapping, Motion Sync & Ripple Control
+icarus-v2mini angle-snap off
+icarus-v2mini motion-sync on
+icarus-v2mini ripple off
+
+# Button Debounce time (0 to 20 ms, automatically snapped to even 2ms hardware steps)
+icarus-v2mini debounce 4
+
+# Idle sleep timeout (in seconds, e.g. 60s)
+icarus-v2mini sleep 60
 ```
 
-### DPI Calibration & Switching
+### DPI Calibration & Independent X/Y Sensitivity
 ```bash
 # Query active DPI stage and stage table
 icarus-v2mini dpi
 
-# Switch to DPI stage 2
-icarus-v2mini dpi --stage 2
+# Switch active stage (1..6)
+icarus-v2mini dpi active 2
 
-# Set DPI value of stage 2 to 1600 DPI
-icarus-v2mini dpi --stage 2 --value 1600
+# Set Stage 2 to 1600 DPI (unified X/Y)
+icarus-v2mini dpi set 2 1600
+
+# Set independent X and Y axis sensitivity (e.g. X: 800, Y: 1200)
+icarus-v2mini dpi set 2 800 --dpi-y 1200
 ```
 
-### Sensor & Performance Tuning
+### RGB & 4K Dongle LED Control
 ```bash
-# Set Lift-Off Distance (low = 1mm, high = 2mm)
-icarus-v2mini lod low
-icarus-v2mini lod high
+# Configure mouse LED mode (solid, breathing, neon, off), color, brightness (0..10), and speed (1..10)
+icarus-v2mini led mode breathing
+icarus-v2mini led color 00F0FF
+icarus-v2mini led brightness 10
+icarus-v2mini led speed 5
 
-# Angle Snapping (precision line straightening)
-icarus-v2mini angle-snap on
-icarus-v2mini angle-snap off
-
-# Motion Sync
-icarus-v2mini motion-sync on
-icarus-v2mini motion-sync off
-
-# Button Debounce time (0 to 20 ms)
-icarus-v2mini debounce 4
+# Configure 4K Wireless Receiver Dongle RGB
+icarus-v2mini dongle-rgb --mode breathing --color 00F0FF --brightness 10 --speed 5 --bar-mode 1
 ```
 
-### RGB & DPI LED Control
+### Hardware Macro Flashing, Profiles & Firmware
 ```bash
-# Set solid cyan LED at maximum brightness
-icarus-v2mini led --mode solid --color "#00F0FF" --brightness 10
+# Flash a macro sequence directly into mouse hardware slot #1 (0x0300 base)
+icarus-v2mini macro flash 1 "Space,20ms,Space" --name "Double Jump"
 
-# Set breathing red with speed level 5
-icarus-v2mini led --mode breathing --color "#FF2A2A" --speed 5
+# Flash all button-assigned macros from a TOML profile
+icarus-v2mini macro flash-all ~/.config/icarus-v2mini/config.toml
 
-# Set neon / rainbow cycle mode
-icarus-v2mini led --mode neon --speed 7
+# Save, apply, or reset hardware profiles
+icarus-v2mini save ~/.config/icarus-v2mini/gaming.toml
+icarus-v2mini apply ~/.config/icarus-v2mini/gaming.toml
+icarus-v2mini reset
 
-# Turn off LED completely
-icarus-v2mini led --mode off
-```
-
-### Profile Management
-```bash
-# Export active hardware configuration to a TOML profile
-icarus-v2mini save ~/.config/icarus/gaming.toml
-
-# Apply and write a TOML profile to the mouse hardware
-icarus-v2mini apply ~/.config/icarus/gaming.toml
+# 2.4G Dongle Pairing, Long-Range RF Boost & ISP Firmware Flasher
+icarus-v2mini pair
+icarus-v2mini long-range on
+icarus-v2mini flash mouse_firmware_v1.0.2.bin
 ```
 
 ### Background Daemon (Battery & Auto-Profile Integration)
-*Exceeds OEM Windows driver capabilities:*
-
 ```bash
 # Run daemon in terminal (checks every 10 seconds)
 icarus-v2mini daemon --interval 10
 
 # Install & enable auto-start background systemd user service
 icarus-v2mini daemon --install-service
-
-# Check systemd service status
-systemctl --user status icarus-v2mini.service
-```
-
-#### Waybar Integration (`~/.config/waybar/config`)
-The daemon exports real-time battery status to `~/.cache/icarus-v2mini/battery.json`:
-```json
-"custom/mouse_battery": {
-    "format": "{}",
-    "return-type": "json",
-    "exec": "cat ~/.cache/icarus-v2mini/battery.json 2>/dev/null",
-    "interval": 5,
-    "tooltip": true
-}
 ```
 
 ---
 
-## Protocol & Reverse Engineering Deep Dive
+## Codebase Architecture, Structure & Coding Standards
 
-Communication is established via Linux HID raw output reports on **Interface 1**, using 17-byte command frames framed with Report ID `0x07`.
+For a complete deep dive, see [**`docs/ARCHITECTURE.md`**](docs/ARCHITECTURE.md), [**`docs/PROTOCOL.md`**](docs/PROTOCOL.md), and [**`CONTRIBUTING.md`**](CONTRIBUTING.md).
 
-### Frame Structure
-
-```
-Byte 0    : Report ID (0x07)
-Byte 1    : Opcode (0x04 = Query, 0x07 = Write, 0x08 = Read, 0x09 = Response)
-Byte 2..3 : Register Address (Big-Endian, e.g. 0x01, 0x01)
-Byte 4    : Payload Length (N)
-Byte 5..15: Data Bytes (Data[0..10])
-Byte 16   : Frame Checksum
-```
-
-### Checksum Algorithms
-- **Subsystem Commands**: `Checksum = XOR(Bytes[0..15])`
-- **Register Memory Writes (`0x4C..0x52`, `0xA0`, `0x2C`)**: `Checksum = (0x55 - Value) & 0xFF`
-
-### Register & Memory Map
-
-| Register Address | Function | Payload Description |
-|---|---|---|
-| `0x01, 0x01` | Polling Rate | `0x01` = 1000Hz, `0x02` = 500Hz, `0x04` = 250Hz, `0x08` = 125Hz |
-| `0x01, 0x02` | Active DPI Stage | `0x00` to `0x05` (0-indexed stages 1..6) |
-| `0x04` (Opcode) | Battery Status Query | Response: `Byte 6` = Percentage (0–100%), `Byte 7` = Charging flag, `Bytes 8..9` = Voltage in mV |
-| `0x0C + (stage * 4)` | Stage DPI Value | X & Y sensor register lookup index (see `SENSOR_3335` note below) |
-| `0x2C + (stage * 4)` | Stage LED Color | `[R, G, B, 0x55 - (R + G + B)]` |
-| `0x4C` | LED Mode | `0x00` = Off, `0x01` = Solid, `0x02` = Breathing, `0x03` = Neon |
-| `0x4E` | LED Brightness | `0x00` (Off) to `0x0A` (100% Brightness) |
-| `0x50` | LED Breathing Speed | `0x01` (Slowest) to `0x0A` (Fastest) |
-| `0xA0` | Composite LED Packet | `[Mode, Brightness, Speed, R, G, B, Checksum]` |
-| `0x01, 0x0B` | LOD Height | `0x01` = Low (1mm), `0x02` = High (2mm) |
-| `0x01, 0x0C` | Angle Snapping | `0x01` = On, `0x00` = Off |
-| `0x01, 0x0D` | Motion Sync | `0x01` = On, `0x00` = Off |
-| `0x01, 0x0E` | Button Debounce | Value in milliseconds (`0`–`20` ms) |
-
-### Note on `SENSOR_3335` vs PAW3395
-In the extracted Windows OEM driver headers (`driver_sensor.h`), the lookup table is named `SENSOR_3335`. Even though the mouse physically integrates the flagship **PixArt PAW3395**, the OEM firmware uses this internal register index array (`0x00` to `0xCE`) to configure the PAW3395 sensor registers. This driver replicates this exact table to guarantee **100% hardware-level DPI fidelity**.
-
----
-
-## Codebase Architecture
-
-Designed according to idiomatic Rust standards:
-
-```
+### Modular Directory Layout
+```text
 icarus-v2mini-linux/
 ├── src/
-│   ├── lib.rs          # Core library exports
-│   ├── main.rs         # CLI entry point, clap routing, and error reporting
-│   ├── device.rs       # hidapi device connection management, USB/wireless probes & I/O
-│   ├── protocol.rs     # Packet serialization, register mapping, opcodes, and checksums
-│   ├── config.rs       # Profile data structures, TOML serialization, and validation
-│   ├── dpi.rs          # PixArt PAW3395 register lookup tables and bidirectional conversions
-│   ├── daemon.rs       # Background daemon, battery JSON export & auto-profile watcher
-│   └── gui.rs          # egui / eframe desktop application, 3D visualizer & state machine
-├── tests/
-│   ├── test_config.rs   # Unit tests for profile loading, saving, and defaults
-│   ├── test_daemon.rs   # Unit tests for battery export schema & auto-profile rules
-│   ├── test_dpi.rs      # Precision tests for PAW3395 lookup table mappings
-│   └── test_protocol.rs # Integration tests for 17-byte HID packets & checksum verification
-├── assets/
-│   ├── UI-Preview/     # High-resolution screenshots of all GUI tabs
-│   ├── app-icon.png    # Desktop application icon
-│   └── Light/          # 14 reverse-engineered ColorBoard graphic assets
-├── examples/           # Sample profiles (profile-default.toml)
-└── 99-icarus-mouse.rules # udev permissions for non-root hardware access
+│   ├── lib.rs                 # Library crate root & public re-exports
+│   ├── main.rs                # Binary entrypoint: CLI subcommand dispatcher & GUI launcher
+│   ├── dpi.rs                 # PAW3395 lookup table & bijective 10-bit X/Y DPI codec (const fn)
+│   ├── protocol/              # Pure 17-byte HID protocol framing, checksums & macro bytecode
+│   │   ├── mod.rs             # Report ID (0x08), packet constants & OEM opcodes
+│   │   ├── addr.rs            # EEPROM register address constants (0x0000..0x0300+)
+│   │   ├── command.rs         # 38 const fn packet constructors & 0x55-sum checksum engine
+│   │   ├── response.rs        # Verified 17-byte response parser (checksum & opcode validation)
+│   │   ├── macro_codec.rs     # On-board macro serializer/deserializer & zero-alloc HID key map
+│   │   └── error.rs           # Structured ProtocolError enum (thiserror)
+│   ├── config/                # Configuration domain models, TOML persistence & safety validation
+│   │   ├── mouse.rs           # MouseConfig aggregate root, validate() & Left-Click Safety Lock
+│   │   ├── dpi.rs             # DpiStage model & default stage presets
+│   │   ├── sensor.rs          # PollingRate & LiftOffDistance enums
+│   │   ├── lighting.rs        # Color, LedMode, DpiLed & DongleRgbConfig models
+│   │   ├── buttons.rs         # ButtonAction enum & localized Display formatting
+│   │   ├── macros.rs          # MacroItem, MacroEvent & MacroRepeatMode models
+│   │   └── rules.rs           # AutoProfileRule model for per-game profile switching
+│   ├── device/                # Hardware transport & register orchestration over hidapi
+│   │   ├── transport.rs       # USB/Wireless interface discovery, query verification & buffer drain
+│   │   ├── sensor.rs          # Sensor register reads/writes & even-2ms debounce snapping
+│   │   ├── lighting.rs        # Mouse LED & 4K dongle RGB commands
+│   │   ├── buttons.rs         # 6-button mapping, keyboard shortcuts, media & FireKey writes
+│   │   ├── macros.rs          # 384-byte chunked EEPROM macro slot flashing
+│   │   ├── firmware.rs        # ISP bootloader firmware update engine
+│   │   └── composite.rs       # Full apply_config() and fail-fast read_config() orchestration
+│   ├── daemon/                # Background watcher service & Linux desktop integration
+│   │   ├── config.rs          # DaemonConfig const fn builder
+│   │   ├── scanner.rs         # Hyprland/Sway/X11/proc active window scanner & AutoProfileCache
+│   │   ├── notification.rs    # Low-battery & 100%-full desktop notifications (notify-send)
+│   │   ├── export.rs          # Atomic Waybar/Polybar JSON battery exporter
+│   │   └── service.rs         # Systemd user service generator & installer
+│   ├── i18n/                  # Bilingual localization subsystem (English & Bahasa Indonesia)
+│   │   └── general, buttons, sensor, lighting, macros, settings.rs
+│   ├── cli/                   # Clap CLI definition & modular command handlers
+│   │   └── commands/          # info, sensor, dpi, lighting, macros, profile, hardware.rs
+│   └── gui/                   # Immediate-mode desktop GUI (eframe / egui)
+│       ├── state.rs           # IcarusApp state machine & 120ms HID slider throttling
+│       ├── app.rs             # Main update loop, global shortcuts & hot-plug polling
+│       ├── widgets.rs         # Custom 3D mouse visualizer & ColorBoard widgets
+│       └── tabs/              # buttons, sensor, lighting, macros, settings.rs
+├── docs/                      # Detailed architecture & protocol documentation
+├── examples/                  # Sample TOML profiles & hardware register probe
+└── tests/                     # 51 automated unit & integration tests
 ```
 
-### Automated Testing & Linting
-
-```bash
-# Run unit & integration tests
-cargo test
-
-# Check code formatting
-cargo fmt --check
-
-# Strict lint verification
-cargo clippy --all-targets -- -D warnings
-```
-
----
-
-## Troubleshooting & FAQ
-
-<details>
-<summary><b>1. "Device not found" or "Permission Denied" error</b></summary>
-
-- Verify your user belongs to the `input` or `plugdev` group.
-- Ensure the udev rules are installed and reloaded:
-  ```bash
-  sudo cp 99-icarus-mouse.rules /etc/udev/rules.d/
-  sudo udevadm control --reload-rules && sudo udevadm trigger
-  ```
-- Unplug and reconnect the USB cable or wireless dongle.
-</details>
-
-<details>
-<summary><b>2. Battery status shows "N/A" or "0%"</b></summary>
-
-- When plugged in via direct USB cable (`PID 0xF511`), the mouse runs on VBUS power and the battery charging indicator will show `[Charging / USB Mode]` with live voltage (~4.8V).
-- Battery percentage reporting is active in wireless 2.4G/4G modes (`PID 0xF512` / `0xF510`).
-</details>
-
-<details>
-<summary><b>3. Wayland vs X11 Display issues</b></summary>
-
-- The GUI natively supports both Wayland and X11 via `eframe` / `winit`.
-- If you experience window scaling issues under Wayland, set `WINIT_UNIX_BACKEND=x11` before launching:
-  ```bash
-  WINIT_UNIX_BACKEND=x11 icarus-v2mini
-  ```
-</details>
+### How the Code is Engineered (Coding Standards)
+1. **Zero Unsafe Code (`unsafe_code = "forbid")**:
+   All binary packet parsing, UTF-8 string truncation, and EEPROM buffer serialization use safe slice patterns and checked bounds.
+2. **Compile-Time Evaluation (`const fn` & `#[must_use]`)**:
+   All DPI math in `src/dpi.rs` and all 38 packet builders in `src/protocol/command.rs` are `#[must_use] pub const fn`.
+3. **Zero-Allocation Hot Paths**:
+   - Key name resolution (`hid_usage_to_key_name`) returns `Cow<'static, str>`, avoiding heap allocations for all standard keys.
+   - The daemon `/proc/<pid>/comm` scanner reads into a 64-byte stack buffer (`[u8; 64]`) and matches patterns via ASCII case-insensitive byte windows without heap allocations.
+   - `AutoProfileCache` tracks `config.toml` modification time (`mtime`) so disk I/O only occurs when the configuration file actually changes.
+4. **Strict Quality Verification**:
+   ```bash
+   cargo fmt --all --check
+   cargo clippy --workspace --all-targets --all-features -- -D warnings
+   cargo test --workspace --all-features
+   ```
 
 ---
 
 ## Acknowledgments
 
 ### Powered by [REA (Reverse Engineer Anything)](https://github.com/morluto/rea)
-Special thanks and credit to **[@morluto](https://github.com/morluto)** and the **[REA (Reverse Engineer Anything)](https://github.com/morluto/rea)** project!
-
-Reverse-engineering proprietary gaming peripherals often requires wading through obfuscated installers, closed-source Windows DLLs (`HIDUsb.dll`), stripped PE binaries, and obscure USB HID report descriptors. **REA** made this entire workflow dramatically faster, clearer, and more structured:
-- Disassembling and decompiling native PE binaries and DLL dispatch routines.
-- Pinpointing vendor HID report handlers, opcodes (`0x04`, `0x07`, `0x08`, `0x09`), and checksum algorithms.
-- Uncovering internal sensor register maps (`driver_sensor.h` / `SENSOR_3335`) and composite RGB lighting packet structures.
-- Tracing runtime state transitions between wired USB and wireless dongle modes.
-
-Without **REA**, bringing a native, bloat-free Linux driver for the ICARUS V2 MINI to life would have taken significantly more guesswork and time. Check out **[github.com/morluto/rea](https://github.com/morluto/rea)**.
+Special thanks and credit to **[@morluto](https://github.com/morluto)** and the **[REA (Reverse Engineer Anything)](https://github.com/morluto/rea)** project for enabling rapid, structured decompilation and analysis of `HIDUsb.dll` and the OEM Windows driver.
 
 ### Special Thanks
 - **PixArt Imaging**: PAW3395 optical gaming sensor.

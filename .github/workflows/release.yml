@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-release:
-    name: Build & Package Linux x86_64
+    name: Build & Package Linux x86_64 (.tar.gz & .AppImage)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,7 +18,7 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libudev-dev pkg-config
+          sudo apt-get install -y libudev-dev pkg-config file wget fuse libfuse2
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -26,27 +26,71 @@ jobs:
       - name: Build Release Binary
         run: cargo build --release --locked
 
-      - name: Package Artifacts
+      - name: Package Tarball (.tar.gz) & AppImage (.AppImage)
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           PKG_DIR="icarus-v2mini-v${VERSION}-linux-x86_64"
           mkdir -p "$PKG_DIR"
-          strip target/release/icarus-v2mini
+          strip target/release/icarus-v2mini || true
           cp target/release/icarus-v2mini "$PKG_DIR/"
           cp 99-icarus-mouse.rules "$PKG_DIR/"
           cp icarus-v2mini.desktop "$PKG_DIR/"
           cp assets/app-icon.png "$PKG_DIR/"
           cp README.md "$PKG_DIR/"
+          cp CHANGELOG.md "$PKG_DIR/"
           cp LICENSE "$PKG_DIR/"
           tar -czvf "${PKG_DIR}.tar.gz" "$PKG_DIR"
           sha256sum "${PKG_DIR}.tar.gz" > "${PKG_DIR}.tar.gz.sha256"
+
+          # Build AppDir for AppImage
+          APPDIR="IcarusV2Mini.AppDir"
+          mkdir -p "$APPDIR/usr/bin"
+          mkdir -p "$APPDIR/usr/share/applications"
+          mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+          mkdir -p "$APPDIR/etc/udev/rules.d"
+
+          cp target/release/icarus-v2mini "$APPDIR/usr/bin/icarus-v2mini"
+          cp 99-icarus-mouse.rules "$APPDIR/etc/udev/rules.d/99-icarus-mouse.rules"
+          cp assets/app-icon.png "$APPDIR/icarus-v2mini.png"
+          cp assets/app-icon.png "$APPDIR/.DirIcon"
+          cp assets/app-icon.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/icarus-v2mini.png"
+
+          cat > "$APPDIR/icarus-v2mini.desktop" << 'EOF'
+          [Desktop Entry]
+          Name=ICARUS V2 MINI
+          Comment=Native Gaming Mouse Configuration Software for ICARUS V2 MINI
+          Exec=icarus-v2mini
+          Icon=icarus-v2mini
+          Terminal=false
+          Type=Application
+          Categories=Settings;HardwareSettings;
+          Keywords=mouse;gaming;dpi;icarus;v2mini;
+          EOF
+          cp "$APPDIR/icarus-v2mini.desktop" "$APPDIR/usr/share/applications/icarus-v2mini.desktop"
+
+          cat > "$APPDIR/AppRun" << 'EOF'
+          #!/bin/sh
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export PATH="${HERE}/usr/bin:${PATH}"
+          exec "${HERE}/usr/bin/icarus-v2mini" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run "$APPDIR" "icarus-v2mini-v${VERSION}-x86_64.AppImage"
+          chmod +x "icarus-v2mini-v${VERSION}-x86_64.AppImage"
+          sha256sum "icarus-v2mini-v${VERSION}-x86_64.AppImage" > "icarus-v2mini-v${VERSION}-x86_64.AppImage.sha256"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             icarus-v2mini-*.tar.gz
-            icarus-v2mini-*.sha256
+            icarus-v2mini-*.tar.gz.sha256
+            icarus-v2mini-*.AppImage
+            icarus-v2mini-*.AppImage.sha256
           generate_release_notes: true
           draft: false
           prerelease: false

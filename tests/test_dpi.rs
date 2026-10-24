@@ -1,8 +1,8 @@
 //! Tests for DPI encoding and decoding (PixArt PAW3395 10-bit linear register mapping).
 
 use icarus_v2mini::dpi::{
-    MAX_DPI, MIN_DPI, decode_dpi, decode_dpi_10bit, encode_dpi, encode_dpi_10bit, snap_dpi,
-    validate_dpi,
+    MAX_DPI, MIN_DPI, decode_dpi, decode_dpi_10bit, decode_dpi_xy_10bit, encode_dpi,
+    encode_dpi_10bit, encode_dpi_xy_10bit, snap_dpi, validate_dpi,
 };
 
 #[test]
@@ -79,4 +79,28 @@ fn test_validate_dpi() {
     assert!(validate_dpi(26000).is_ok());
     assert!(validate_dpi(49).is_err());
     assert!(validate_dpi(26001).is_err());
+}
+
+#[test]
+fn test_independent_xy_dpi_10bit_roundtrip() {
+    let pairs = [
+        (800, 26000),
+        (26000, 800),
+        (16000, 26000),
+        (26000, 16000),
+        (26000, 26000),
+        (400, 1600),
+        (12850, 50),
+        (50, 25950),
+    ];
+
+    for (x, y) in pairs {
+        let (low_x, low_y, flag) = encode_dpi_xy_10bit(x, y);
+        let (dec_x, dec_y) = decode_dpi_xy_10bit(low_x, low_y, flag);
+        assert_eq!((dec_x, dec_y), (x, y), "Failed XY roundtrip for ({x}, {y})");
+    }
+
+    // Legacy uniform stage packet where only bits 7..6 are populated (low_x == low_y)
+    let (_, low, flag) = encode_dpi_10bit(26000);
+    assert_eq!(decode_dpi_xy_10bit(low, low, flag), (26000, 26000));
 }

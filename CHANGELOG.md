@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0] - 2026-10-24
+
+### Added
+- **Modular Domain-Driven Architecture (`src/*`)**:
+  - Refactored the entire codebase from monolithic files into 7 cohesive domain modules (`cli`, `config`, `daemon`, `device`, `dpi`, `gui`, `i18n`, `protocol`) with 30+ focused submodules.
+- **Full Bilingual Localization Subsystem (`src/i18n/`)**:
+  - Dedicated zero-allocation localization engine (`AppLanguage::English` and `AppLanguage::Indonesian`) covering all 5 GUI tabs, status banners, safety lock warnings, and interactive dialogs.
+- **Bijective 10-Bit Independent X/Y DPI Encoding (`src/dpi.rs`)**:
+  - Added `encode_dpi_xy_10bit` and `decode_dpi_xy_10bit` to pack independent 10-bit X and Y PAW3395 register indices (`0x000`–`0x3FF`) into the 4-byte EEPROM stage packet (`[val_x_low, val_y_low, high_bits_xy, checksum]`), eliminating wrap-around corruption above 12,750 DPI when Separate X/Y DPI is enabled.
+- **Cryptographic/Frame Verification on HID Responses (`src/protocol/response.rs`)**:
+  - Added `Response::from_bytes_verified`, `verify_checksum`, and `verify_opcode` to validate the OEM `0x55 - sum` frame checksum and command opcodes on incoming 17-byte HID packets.
+- **Extended Keyboard & Media Key Coverage (`src/protocol/macro_codec.rs`, `src/config/buttons.rs`)**:
+  - Added full support for `F13`–`F24` (`0x68`–`0x73`), `egui::Key` debug aliases (`ArrowUp`, `OpenBracket`, `Semicolon`, etc.), and extended media usage codes (`0x83` Media Player, `0x24` Browser Back, `0x25` Browser Forward).
+- **Automatic USB Hot-Plug Detection (`src/gui/app.rs`)**:
+  - GUI background poll now automatically detects newly connected ICARUS mice/dongles and refreshes firmware version when a sleeping wireless mouse wakes up.
+- **Comprehensive Project Documentation (`docs/`, `CONTRIBUTING.md`, `examples/README.md`)**:
+  - Added `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md`, `CONTRIBUTING.md`, and `examples/README.md`.
+- **Release Packaging (`.AppImage` & `.tar.gz`)**:
+  - Added portable `x86_64.AppImage` bundle alongside the standard `.tar.gz` binary archive in GitHub Releases.
+
+### Fixed
+- **Wireless Offline/Sleeping Multi-Second Freeze & False-Positive Success (`src/device/`, `src/cli/`, `src/gui/`)**:
+  - Fixed `IcarusDevice::read_config` stalling for **17.5 seconds** (`35 * 500ms` timeouts) and returning a silent `Ok(MouseConfig::default())` when the wireless mouse is asleep.
+  - Fixed `IcarusDevice::apply_config` and `flash_macro_slot` stalling for 1.3–2.5 seconds and falsely reporting `Ok(())` when the wireless mouse is offline.
+  - Fixed `icarus-v2mini info` stalling for **8.5 seconds** when querying an offline wireless dongle.
+- **CLI Standalone Register Persistence (`src/cli/commands/`)**:
+  - Added `dev.commit_config(1)?` after standalone CLI writes (`rate`, `lod`, `angle-snap`, `motion-sync`, `ripple`, `debounce`, `sleep`, `dpi`, `led`) so changes take effect immediately on the physical mouse MCU.
+- **Hardware `DPI_LED_MODE` Read Address & Atomic Profile Commit (`src/device/`)**:
+  - Fixed `read_config` reading `DPI_LED_MODE` from `0x00A1` instead of `addr::DPI_LED_MODE` (`0x00A0`).
+  - Updated `commit_config` to write `[profile_id, 0x55 - profile_id]` atomically in a single 2-byte command.
+- **Daemon 100% Battery Notification State Machine (`src/daemon/notification.rs`)**:
+  - Fixed a state tracking bug where plugging in the mouse at `< 100%` immediately set `last_charging_state = true`, preventing the "Battery Full (100%)" desktop notification from firing when charging reached `100%`.
+- **Daemon Auto-Profile Rule Priority & Live Config Reload (`src/daemon/scanner.rs`)**:
+  - Fixed rule evaluation so higher-priority rules matching the current profile no longer fall through to lower-priority rules.
+  - Added `Sway` `floating_nodes` recursive inspection and immediate rule re-evaluation when `config.toml` modification time (`mtime`) changes.
+- **GUI Input Capture, Safety Lock & Macro Recording (`src/gui/`)**:
+  - Suspended global shortcuts (`1..5`, `Ctrl+S`, `Ctrl+R`) while binding a button key or recording a live macro.
+  - Enforced the Left-Click Safety Lock during interactive `[Press Any Key]` button binding.
+  - Prevented off-by-one capacity overflow (> 64 events) and orphan `KeyDown` events during live macro recording.
+  - Preserved host-persisted settings (`language`, `macros`, `auto_profile_rules`, `dongle_rgb`, `led_sleep_seconds`) when reading hardware registers.
+
+### Performance & Quality
+- **Zero-Allocation Hot Paths**:
+  - `hid_usage_to_key_name` now returns `Cow<'static, str>`, eliminating heap allocations for all known keyboard/mouse keys.
+  - Replaced `fs::read_to_string` in `/proc/<pid>/comm` scanning with a 64-byte stack-allocated buffer and environment-guarded compositor subprocess execution (`HYPRLAND_INSTANCE_SIGNATURE`, `SWAYSOCK`, `DISPLAY`).
+  - Added `AutoProfileCache` backed by `config.toml` `mtime` and atomic `.tmp` + `rename` writes for `~/.cache/icarus-v2mini/battery.json`.
+  - Throttled GUI live lighting/dongle slider HID writes to `120ms` (~8 Hz) and 2.4G pairing status polls to `250ms` (4 Hz).
+- **Compile-Time Evaluation & Strict Lints**:
+  - Enforced `unsafe_code = "forbid"` and strict Clippy lints (`redundant_clone`, `clone_on_copy`, `needless_collect`, `manual_while_let_some`, `or_fun_call`).
+  - Converted all pure functions in `src/dpi.rs` and all 38 packet constructors in `src/protocol/command.rs` to `#[must_use] pub const fn`.
+  - Expanded automated test suite from 29 to **51 unit & integration tests**.
+
+---
+
 ## [0.3.0] - 2026-10-22
 
 ### Added (Beyond OEM Windows Capabilities)
@@ -30,10 +84,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (Hardware Parity with OEM Driver)
 - **2.4G Dongle Re-Pairing Tool**:
-  - Direct hardware opcode `0x0B` (`CS_UsbServer_EnterDonglePair`, `CS_UsbServer_ReadDonglePairStatus`) enabling resynchronization between mouse and 2.4G dongle without Windows.
+  - Direct hardware opcode `0x06` / `0x09` (`CS_UsbServer_EnterDonglePair`, `CS_UsbServer_ReadDonglePairStatus`) enabling resynchronization between mouse and 2.4G dongle without Windows.
   - Supported in both CLI (`icarus-v2mini pair [--cid] [--mid]`) and GUI Settings tab.
 - **Long Range RF Power Boost**:
-  - Direct register toggling (`CS_UsbFinder_SetLongRangeMode`, opcode `0x01, 0x11`) for maximum wireless stability through obstacles.
+  - Direct register toggling (`CS_UsbFinder_SetLongRangeMode`, opcode `0x16`) for maximum wireless stability through obstacles.
   - Supported in both CLI (`icarus-v2mini long-range [on|off]`) and GUI Settings tab.
 - **Hardware On-Board Macro Buffer Conversion**:
   - Complete binary encoder replicating `MacroKeyToBuffer` and `BufferToMacroKey`, converting keystroke timeline sequences into 5-byte event packets for on-board EEPROM buffer serialization.

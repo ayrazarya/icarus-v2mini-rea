@@ -422,22 +422,17 @@ fn decode_3335(reg: u8) -> u16 {
         (0xBD, 16000),
     ];
 
-    for &(r, dpi) in table {
-        if r == reg {
-            return dpi;
-        }
-    }
-
-    // Interpolate for unknown values
-    let mut prev = table[0];
-    for &(r, dpi) in table.iter().skip(1) {
-        if r > reg {
+    match table.binary_search_by_key(&reg, |&(r, _)| r) {
+        Ok(idx) => table[idx].1,
+        Err(0) => table[0].1,
+        Err(idx) if idx >= table.len() => table[table.len() - 1].1,
+        Err(idx) => {
+            let prev = table[idx - 1];
+            let (r, dpi) = table[idx];
             let frac = (reg - prev.0) as u32 * (dpi - prev.1) as u32 / (r - prev.0).max(1) as u32;
-            return prev.1 + frac as u16;
+            prev.1 + frac as u16
         }
-        prev = (r, dpi);
     }
-    prev.1
 }
 
 fn write_reg(dev: &hidapi::HidDevice, addr_hi: u8, addr_lo: u8, payload: &[u8]) {

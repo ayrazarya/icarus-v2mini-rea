@@ -234,3 +234,170 @@ fn test_hardware_macro_buffer_serialization_roundtrip() {
     assert_eq!(parsed.events[1].delay_ms, 50);
     assert_eq!(parsed.events[2].event_type, MacroEventType::KeyUp);
 }
+
+#[test]
+fn test_hid_usage_key_mapping() {
+    use icarus_v2mini::protocol::{hid_usage_to_key_name, key_to_hid_usage};
+
+    // Standard alphanumeric
+    assert_eq!(key_to_hid_usage("A"), 0x04);
+    assert_eq!(key_to_hid_usage("Z"), 0x1D);
+    assert_eq!(key_to_hid_usage("1"), 0x1E);
+    assert_eq!(key_to_hid_usage("0"), 0x27);
+
+    // Controls and navigation
+    assert_eq!(key_to_hid_usage("Space"), 0x2C);
+    assert_eq!(key_to_hid_usage("Enter"), 0x28);
+    assert_eq!(key_to_hid_usage("Escape"), 0x29);
+    assert_eq!(key_to_hid_usage("Tab"), 0x2B);
+    assert_eq!(key_to_hid_usage("F1"), 0x3A);
+    assert_eq!(key_to_hid_usage("F12"), 0x45);
+
+    // Mouse buttons inside macro sequences
+    assert_eq!(key_to_hid_usage("Mouse Left"), 0xF0);
+    assert_eq!(key_to_hid_usage("Mouse Right"), 0xF1);
+    assert_eq!(key_to_hid_usage("Mouse Middle"), 0xF2);
+    assert_eq!(key_to_hid_usage("Mouse Forward"), 0xF3);
+    assert_eq!(key_to_hid_usage("Mouse Back"), 0xF4);
+
+    // Reverse lookup
+    assert_eq!(hid_usage_to_key_name(0x04), "A");
+    assert_eq!(hid_usage_to_key_name(0x2C), "Space");
+    assert_eq!(hid_usage_to_key_name(0xF0), "Mouse Left");
+    assert_eq!(hid_usage_to_key_name(0xF4), "Mouse Back");
+}
+
+#[test]
+fn test_macro_hardware_buffer_with_mouse_clicks() {
+    use icarus_v2mini::config::{MacroEvent, MacroEventType};
+    use icarus_v2mini::protocol::{hardware_buffer_to_macro, macro_to_hardware_buffer};
+
+    let events = vec![
+        MacroEvent {
+            event_type: MacroEventType::KeyDown,
+            key: "Mouse Left".into(),
+            delay_ms: 0,
+        },
+        MacroEvent {
+            event_type: MacroEventType::Delay,
+            key: String::new(),
+            delay_ms: 12,
+        },
+        MacroEvent {
+            event_type: MacroEventType::KeyUp,
+            key: "Mouse Left".into(),
+            delay_ms: 0,
+        },
+    ];
+
+    let buf = macro_to_hardware_buffer("Clicker", &events);
+    assert_eq!(buf[0], 7);
+    assert_eq!(&buf[1..8], b"Clicker");
+    assert_eq!(buf[31], 3);
+
+    let parsed = hardware_buffer_to_macro(&buf).expect("Parse hardware buffer with mouse clicks");
+    assert_eq!(parsed.name, "Clicker");
+    assert_eq!(parsed.events.len(), 3);
+    assert_eq!(parsed.events[0].key, "Mouse Left");
+    assert_eq!(parsed.events[2].key, "Mouse Left");
+}
+
+#[test]
+fn test_macro_hardware_buffer_utf8_name_truncation() {
+    use icarus_v2mini::protocol::{hardware_buffer_to_macro, macro_to_hardware_buffer};
+
+    // A string with multi-byte unicode characters that exceeds 30 bytes
+    // "Mäcrö-Gämïng-Prö-Tëstïng-12345" has many 2-byte characters
+    let long_utf8_name = "Mäcrö-Gämïng-Prö-Tëstïng-12345";
+    assert!(long_utf8_name.len() > 30);
+
+    let buf = macro_to_hardware_buffer(long_utf8_name, &[]);
+    assert!(buf[0] <= 30);
+    // Ensure the slice is valid UTF-8
+    let name_str = std::str::from_utf8(&buf[1..1 + (buf[0] as usize)])
+        .expect("Buffer name must be valid UTF-8");
+    assert!(!name_str.is_empty());
+
+    let parsed = hardware_buffer_to_macro(&buf).expect("Parsed successfully");
+    assert_eq!(parsed.name, name_str);
+}
+
+#[test]
+fn test_response_checksum_and_opcode_verification() {
+    use icarus_v2mini::protocol::ProtocolError;
+
+    let cmd = Command::read_report_rate();
+    let resp = Response::from_bytes_verified(&cmd.data).expect("Valid checksum packet");
+    assert!(resp.verify_checksum().is_ok());
+    assert!(resp.verify_opcode(CMD_READ).is_ok());
+    assert_eq!(
+        resp.verify_opcode(CMD_WRITE),
+        Err(ProtocolError::UnexpectedOpcode(CMD_READ))
+    );
+
+    let mut corrupted = cmd.data;
+    corrupted[16] ^= 0xFF;
+    assert!(matches!(
+        Response::from_bytes_verified(&corrupted),
+        Err(ProtocolError::BadChecksum { .. })
+    ));
+}
+
+#[test]
+fn test_hid_usage_case_insensitive_and_full_coverage() {
+    use icarus_v2mini::protocol::{hid_usage_to_key_name, key_to_hid_usage};
+
+    // Lowercase and mixed-case keys must map accurately, not fall back to 'A' (0x04)
+    assert_eq!(key_to_hid_usage("a"), 0x04);
+    assert_eq!(key_to_hid_usage("e"), 0x08);
+    assert_eq!(key_to_hid_usage("z"), 0x1D);
+    assert_eq!(key_to_hid_usage("space"), 0x2C);
+    assert_eq!(key_to_hid_usage("enter"), 0x28);
+    assert_eq!(key_to_hid_usage("esc"), 0x29);
+    assert_eq!(key_to_hid_usage("ctrl"), 0xE0);
+    assert_eq!(key_to_hid_usage("f12"), 0x45);
+    assert_eq!(key_to_hid_usage("mouse right"), 0xF1);
+    assert_eq!(key_to_hid_usage("key_0x15"), 0x15);
+
+    // egui::Key Debug format aliases
+    assert_eq!(key_to_hid_usage("Backtick"), 0x35);
+    assert_eq!(key_to_hid_usage("Plus"), 0x2E);
+    assert_eq!(key_to_hid_usage("Pipe"), 0x31);
+    assert_eq!(key_to_hid_usage("Colon"), 0x33);
+    assert_eq!(key_to_hid_usage("Questionmark"), 0x38);
+
+    // Invalid / unmapped key names must return 0x00, not silently map to 'A' (0x04)
+    assert_eq!(key_to_hid_usage("invalid_nonexistent_key"), 0x00);
+    assert_eq!(key_to_hid_usage(""), 0x00);
+
+    // Reverse lookup for extended navigation and modifier keys
+    assert_eq!(hid_usage_to_key_name(0x39), "CapsLock");
+    assert_eq!(hid_usage_to_key_name(0x46), "PrintScreen");
+    assert_eq!(hid_usage_to_key_name(0x4C), "Delete");
+    assert_eq!(hid_usage_to_key_name(0xE4), "RightCtrl");
+    assert_eq!(hid_usage_to_key_name(0xE6), "RightAlt");
+}
+
+#[test]
+fn test_macro_buffer_corruption_and_bounds_rejection() {
+    use icarus_v2mini::config::{MacroEvent, MacroEventType};
+    use icarus_v2mini::protocol::{hardware_buffer_to_macro, macro_to_hardware_buffer};
+
+    let events = vec![MacroEvent {
+        event_type: MacroEventType::KeyDown,
+        key: "space".into(),
+        delay_ms: 10,
+    }];
+    let mut buf = macro_to_hardware_buffer("Jump", &events);
+    assert!(hardware_buffer_to_macro(&buf).is_some());
+
+    // Corrupt checksum byte
+    let last_idx = buf.len() - 1;
+    buf[last_idx] ^= 0xFF;
+    assert!(hardware_buffer_to_macro(&buf).is_none());
+
+    // Fix checksum, then set event_count > 64
+    buf[last_idx] ^= 0xFF;
+    buf[31] = 65;
+    assert!(hardware_buffer_to_macro(&buf).is_none());
+}

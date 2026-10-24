@@ -1,6 +1,6 @@
 [package]
 name = "icarus-v2mini"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 description = "Native Linux configuration tool and driver for ICARUS V2 MINI gaming mouse"
 license = "MIT"
@@ -28,3 +28,14 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+redundant_clone = "deny"
+clone_on_copy = "deny"
+needless_collect = "deny"
+manual_while_let_some = "deny"
+or_fun_call = "warn"
+

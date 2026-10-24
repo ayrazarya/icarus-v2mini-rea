@@ -103,3 +103,41 @@ fn test_daemon_config_builder() {
     assert!(!custom.enable_notify);
     assert!(!custom.auto_profile);
 }
+
+#[test]
+fn test_auto_profile_cache_refresh_consistency() {
+    use icarus_v2mini::daemon::AutoProfileCache;
+
+    let mut cache = AutoProfileCache::default();
+    let (enabled_1, rules_1_len) = {
+        let (e, r) = cache.refresh();
+        (e, r.len())
+    };
+    let (enabled_2, rules_2_len) = {
+        let (e, r) = cache.refresh();
+        (e, r.len())
+    };
+    assert_eq!(enabled_1, enabled_2);
+    assert_eq!(rules_1_len, rules_2_len);
+}
+
+#[test]
+fn test_battery_notification_full_charge_state_transition() {
+    use icarus_v2mini::daemon::check_and_notify_battery;
+
+    let mut last_charging_state = false;
+    let mut last_notified_low = None;
+
+    // Charging at 80% should NOT mark last_charging_state as full
+    check_and_notify_battery(80, true, &mut last_charging_state, &mut last_notified_low);
+    assert!(!last_charging_state);
+
+    // When already full while charging, staying at 100% preserves true without re-triggering
+    last_charging_state = true;
+    check_and_notify_battery(100, true, &mut last_charging_state, &mut last_notified_low);
+    assert!(last_charging_state);
+
+    // Unplugging resets last_charging_state to false
+    check_and_notify_battery(100, false, &mut last_charging_state, &mut last_notified_low);
+    assert!(!last_charging_state);
+}
