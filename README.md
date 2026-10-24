@@ -170,7 +170,7 @@ chmod +x icarus-v2mini-v0.4.0-x86_64.AppImage
 tar -xzvf icarus-v2mini-v0.4.0-linux-x86_64.tar.gz
 cd icarus-v2mini-v0.4.0-linux-x86_64
 
-# Install binary to ~/.local/bin or /usr/local/bin
+# Install binary to /usr/local/bin and setup udev rules
 sudo install -Dm755 icarus-v2mini /usr/local/bin/icarus-v2mini
 sudo cp 99-icarus-mouse.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
@@ -320,7 +320,7 @@ icarus-v2mini daemon --install-service
 
 ## Codebase Architecture, Structure & Coding Standards
 
-For a complete deep dive, see [**`docs/ARCHITECTURE.md`**](docs/ARCHITECTURE.md), [**`docs/PROTOCOL.md`**](docs/PROTOCOL.md), and [**`CONTRIBUTING.md`**](CONTRIBUTING.md).
+For a complete technical breakdown, see [**`docs/ARCHITECTURE.md`**](docs/ARCHITECTURE.md), [**`docs/PROTOCOL.md`**](docs/PROTOCOL.md), and [**`CONTRIBUTING.md`**](CONTRIBUTING.md).
 
 ### Modular Directory Layout
 ```text
@@ -345,24 +345,27 @@ icarus-v2mini-linux/
 │   │   ├── macros.rs          # MacroItem, MacroEvent & MacroRepeatMode models
 │   │   └── rules.rs           # AutoProfileRule model for per-game profile switching
 │   ├── device/                # Hardware transport & register orchestration over hidapi
-│   │   ├── transport.rs       # USB/Wireless interface discovery, query verification & buffer drain
-│   │   ├── sensor.rs          # Sensor register reads/writes & even-2ms debounce snapping
-│   │   ├── lighting.rs        # Mouse LED & 4K dongle RGB commands
-│   │   ├── buttons.rs         # 6-button mapping, keyboard shortcuts, media & FireKey writes
+│   │   ├── discovery.rs       # USB/Wireless interface enumeration & connection opening
+│   │   ├── connection.rs      # Low-level HID send/query transport, verification & buffer drain
+│   │   ├── registers.rs       # Sensor, DPI, LED, 4K dongle, button, and sleep register I/O
 │   │   ├── macros.rs          # 384-byte chunked EEPROM macro slot flashing
 │   │   ├── firmware.rs        # ISP bootloader firmware update engine
 │   │   └── composite.rs       # Full apply_config() and fail-fast read_config() orchestration
 │   ├── daemon/                # Background watcher service & Linux desktop integration
 │   │   ├── config.rs          # DaemonConfig const fn builder
+│   │   ├── service.rs         # Main daemon event loop, Ctrl+C handling, & auto-reconnect
 │   │   ├── scanner.rs         # Hyprland/Sway/X11/proc active window scanner & AutoProfileCache
 │   │   ├── notification.rs    # Low-battery & 100%-full desktop notifications (notify-send)
 │   │   ├── export.rs          # Atomic Waybar/Polybar JSON battery exporter
-│   │   └── service.rs         # Systemd user service generator & installer
+│   │   └── systemd.rs         # Systemd user service generator & installer
 │   ├── i18n/                  # Bilingual localization subsystem (English & Bahasa Indonesia)
-│   │   └── general, buttons, sensor, lighting, macros, settings.rs
+│   │   └── navigation, status, buttons, sensor, lighting, macros, settings.rs
 │   ├── cli/                   # Clap CLI definition & modular command handlers
-│   │   └── commands/          # info, sensor, dpi, lighting, macros, profile, hardware.rs
+│   │   ├── args.rs            # Clap derive structs & subcommands
+│   │   ├── helpers.rs         # UTF-8 safe hex color parser & CLI formatting utilities
+│   │   └── commands/          # info, sensor, dpi, lighting, macros, config, system.rs
 │   └── gui/                   # Immediate-mode desktop GUI (eframe / egui)
+│       ├── theme.rs           # Custom visual theme & typography styling
 │       ├── state.rs           # IcarusApp state machine & 120ms HID slider throttling
 │       ├── app.rs             # Main update loop, global shortcuts & hot-plug polling
 │       ├── widgets.rs         # Custom 3D mouse visualizer & ColorBoard widgets
@@ -373,7 +376,7 @@ icarus-v2mini-linux/
 ```
 
 ### How the Code is Engineered (Coding Standards)
-1. **Zero Unsafe Code (`unsafe_code = "forbid")**:
+1. **Zero Unsafe Code (`unsafe_code = "forbid"`)**:
    All binary packet parsing, UTF-8 string truncation, and EEPROM buffer serialization use safe slice patterns and checked bounds.
 2. **Compile-Time Evaluation (`const fn` & `#[must_use]`)**:
    All DPI math in `src/dpi.rs` and all 38 packet builders in `src/protocol/command.rs` are `#[must_use] pub const fn`.
@@ -387,6 +390,23 @@ icarus-v2mini-linux/
    cargo clippy --workspace --all-targets --all-features -- -D warnings
    cargo test --workspace --all-features
    ```
+
+---
+
+## Nice to Have (If You Want to Contribute)
+
+We welcome pull requests and community contributions! See [**`CONTRIBUTING.md`**](CONTRIBUTING.md) for the full guide.
+
+### Contributor Profile & Best Practices
+- **Can Use an Agentic AI Very Well**: Contributors who leverage Agentic AI coding workflows, MCP tools (such as [REA](https://github.com/morluto/rea)), and automated verification pipelines effectively—pairing rapid iteration with strict Rust engineering discipline—are highly encouraged.
+- **Avoid Unverified AI Slop ("Can't Use an Agentic AI Very Well")**: Please do **not** submit unverified AI-generated patches that ignore hardware register constraints, break the `0x55 - sum` checksum invariant, introduce `unsafe` code, or fail Clippy/unit tests.
+- **Systems & QA Mindset**: Always account for sleeping wireless dongles, USB hot-plugging, multi-byte UTF-8 safety, and zero-allocation hot paths.
+
+### Nice-to-Have Roadmap Ideas
+- **Distribution Packaging**: Arch Linux AUR (`PKGBUILD`), Flatpak, Debian (`.deb`), Fedora (`.rpm`), and NixOS flake packages.
+- **System Tray Applet**: Lightweight `StatusNotifierItem` tray indicator with live battery telemetry and 1-click profile switching.
+- **Additional Wayland Compositors for Auto-Profile**: Native active-window detection for KDE Plasma (KWin), GNOME (Mutter), Niri, and COSMIC.
+- **Live Polling Rate (Hz) Stability Graph**: Real-time USB report interval & Hz graph inside the GUI Sensor tab.
 
 ---
 

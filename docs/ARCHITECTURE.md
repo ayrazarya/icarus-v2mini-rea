@@ -1,17 +1,17 @@
 # Architecture & Codebase Structure (`icarus-v2mini`)
 
-Dokumen ini menjelaskan arsitektur perangkat lunak, struktur direktori modular, alur data (*data flow*), serta pola desain (*design patterns*) yang digunakan dalam proyek **ICARUS V2 MINI Linux Driver & Native GUI**.
+This document provides a comprehensive technical overview of the software architecture, modular directory layout, data flows, and engineering patterns implemented in the **ICARUS V2 MINI Linux Driver & Native GUI**.
 
 ---
 
-## 1. Gambaran Umum Arsitektur (High-Level Overview)
+## 1. High-Level Architectural Overview
 
-Proyek ini dibangun menggunakan **Rust 2024 Edition** dengan pendekatan **Modular Domain-Driven Design (DDD)** dan prinsip **Zero Unsafe Code (`unsafe_code = "forbid"`)**. Seluruh komunikasi perangkat keras, logika bisnis konfigurasi, antarmuka CLI, daemon latar belakang, dan aplikasi desktop GUI dipisahkan ke dalam modul-modul dengan batas tanggung jawab (*Separation of Concerns*) yang tegas.
+The project is built using **Rust 2024 Edition** following a **Modular Domain-Driven Design (DDD)** architecture and a strict **Zero Unsafe Code (`unsafe_code = "forbid"`)** policy. Hardware transport, binary protocol framing, configuration domain models, CLI command routing, background daemon integration, localization, and the immediate-mode desktop GUI are decoupled into focused modules with clear boundaries.
 
 ```mermaid
 flowchart TD
     subgraph Entrypoints["Application Entrypoints"]
-        MAIN["src/main.rs (Binary Entry)"]
+        MAIN["src/main.rs (Binary Entrypoint)"]
         CLI["src/cli/ (Clap Subcommands)"]
         GUI["src/gui/ (eframe / egui Desktop App)"]
         DAEMON["src/daemon/ (Background Watcher)"]
@@ -24,7 +24,7 @@ flowchart TD
     end
 
     subgraph HardwareLayer["Hardware Abstraction & HID Layer"]
-        DEVICE["src/device/ (IcarusDevice & Transport)"]
+        DEVICE["src/device/ (IcarusDevice & Registers)"]
         PROTOCOL["src/protocol/ (17-Byte Packets & Macro Bytecode)"]
         HIDAPI["Linux hidapi / udev (Interface 1, Report ID 0x08)"]
     end
@@ -47,152 +47,157 @@ flowchart TD
 
 ---
 
-## 2. Struktur Direktori Lengkap
+## 2. Complete Directory & Module Structure
 
 ```text
 icarus-v2mini-linux/
-├── Cargo.toml                     # Manifest paket, profil rilis LTO, dan aturan lint ketat
-├── 99-icarus-mouse.rules          # Aturan udev Linux untuk akses USB HID tanpa root
-├── icarus-v2mini.desktop          # Pintasan peluncur aplikasi desktop Linux (Freedesktop)
-├── README.md                      # Dokumentasi utama proyek
-├── CHANGELOG.md                   # Catatan rilis dan riwayat perubahan versi
-├── CONTRIBUTING.md                # Panduan cara koding, standar kualitas, dan kontribusi
+├── Cargo.toml                     # Package manifest, LTO release profile, and strict lints
+├── 99-icarus-mouse.rules          # Linux udev rules for non-root USB HID access
+├── icarus-v2mini.desktop          # Freedesktop desktop application launcher entry
+├── README.md                      # Main project overview, installation, and CLI/GUI guide
+├── CHANGELOG.md                   # Release history and versioned change log
+├── CONTRIBUTING.md                # Coding standards, contribution workflow, and roadmap
 ├── docs/
-│   ├── ARCHITECTURE.md            # Penjelasan mendalam arsitektur & struktur kode (file ini)
-│   └── PROTOCOL.md                # Spesifikasi protokol HID 17-byte & peta memori EEPROM
+│   ├── ARCHITECTURE.md            # Deep-dive into modular architecture & data flows (this file)
+│   └── PROTOCOL.md                # 17-byte USB HID protocol & EEPROM memory specification
 ├── examples/
-│   ├── README.md                  # Panduan penggunaan contoh profil & alat diagnostik
-│   ├── dpi_probe.rs               # Utilitas diagnostik pembacaan register DPI perangkat keras
-│   └── profile-default.toml       # Contoh konfigurasi profil lengkap dalam format TOML
+│   ├── README.md                  # Guide to sample profiles and hardware diagnostic utilities
+│   ├── dpi_probe.rs               # Low-level hardware DPI register diagnostic utility
+│   └── profile-default.toml       # Sample complete TOML configuration profile
 ├── src/
-│   ├── lib.rs                     # Root crate library & re-export API publik
-│   ├── main.rs                    # Entrypoint utama: routing argumen CLI atau peluncuran GUI
-│   ├── dpi.rs                     # Kalkulasi & tabel lookup sensor PixArt PAW3395 (const fn)
-│   ├── protocol/                  # Layer Protokol Biner HID (Pure / No I/O)
-│   │   ├── mod.rs                 # Konstanta Report ID (0x08), ukuran paket (17 byte), & opcode
-│   │   ├── addr.rs                # Peta alamat register EEPROM (0x0000..0x0300+)
-│   │   ├── command.rs             # 38 builder paket Command (const fn) & algoritma checksum
-│   │   ├── response.rs            # Parser Response 17-byte + verifikasi checksum & opcode
-│   │   ├── macro_codec.rs         # Encoder/decoder bytecode makro EEPROM & pemetaan HID key
-│   │   └── error.rs               # Definisi error domain terstruktur (ProtocolError via thiserror)
-│   ├── config/                    # Layer Model Data Konfigurasi & Validasi
-│   │   ├── mod.rs                 # Ekspor tipe-tipe konfigurasi
-│   │   ├── mouse.rs               # Struct utama MouseConfig, serialisasi TOML, & validate()
-│   │   ├── dpi.rs                 # Model DpiStage (X/Y independen, warna RGB, status aktif)
-│   │   ├── sensor.rs              # Enum PollingRate (125..1000Hz) & LiftOffDistance (1mm/2mm)
-│   │   ├── lighting.rs            # Model Color, LedMode, DpiLed, dan DongleRgbConfig
-│   │   ├── buttons.rs             # Enum ButtonAction (Mouse, Keyboard, Media, Macro, FireKey)
-│   │   ├── macros.rs              # Model MacroItem, MacroEvent, MacroEventType, MacroRepeatMode
-│   │   └── rules.rs               # Model AutoProfileRule untuk perpindahan profil per-aplikasi
-│   ├── device/                    # Layer Driver Perangkat Keras (hidapi Transport)
-│   │   ├── mod.rs                 # Definisi VID/PID, ConnectionType, BatteryStatus, IcarusDevice
-│   │   ├── transport.rs           # Discovery USB/Wireless, send/query HID, & drain buffer
-│   │   ├── sensor.rs              # Operasi baca/tulis DPI, Polling Rate, LOD, Debounce, Sleep
-│   │   ├── lighting.rs            # Operasi baca/tulis RGB mouse & RGB dongle 4K
-│   │   ├── buttons.rs             # Operasi pemetaan 6 tombol fisik, Keyboard, Media, & FireKey
-│   │   ├── macros.rs              # Flash slot makro (384 byte/slot) ke EEPROM perangkat keras
-│   │   ├── firmware.rs            # Flasher firmware ISP bootloader (.bin / .hex)
-│   │   └── composite.rs           # Orkestrasi apply_config() dan read_config() secara utuh
-│   ├── daemon/                    # Layer Layanan Latar Belakang (Systemd & Desktop Integration)
-│   │   ├── mod.rs                 # Loop utama daemon, penanganan sinyal Ctrl+C, & auto-reconnect
-│   │   ├── config.rs              # Builder DaemonConfig (const fn)
-│   │   ├── scanner.rs             # Deteksi window aktif (Hyprland/Sway/X11/proc) & AutoProfileCache
-│   │   ├── notification.rs        # Notifikasi baterai lemah/penuh via notify-send
-│   │   ├── export.rs              # Ekspor JSON baterai atomik (Waybar/Polybar) & path konfigurasi
-│   │   └── service.rs             # Generator & installer unit systemd user service
-│   ├── i18n/                      # Layer Lokalisasi Dwibahasa (English & Bahasa Indonesia)
-│   │   ├── mod.rs                 # Enum AppLanguage & metadata bahasa
-│   │   ├── general.rs             # Terjemahan header, tab, status koneksi, & tombol global
-│   │   ├── buttons.rs             # Terjemahan tab Tombol, Debounce, & Click Tester
-│   │   ├── sensor.rs              # Terjemahan tab Sensor, DPI, & Kalibrasi PAW3395
-│   │   ├── lighting.rs            # Terjemahan tab Pencahayaan RGB & Dongle 4K
-│   │   ├── macros.rs              # Terjemahan tab Sequencer & Perekam Makro
-│   │   └── settings.rs            # Terjemahan tab Pengaturan, Pairing 2.4G, & Auto-Profile
-│   └── cli/                       # Layer Antarmuka Baris Perintah (Clap CLI)
-│       ├── mod.rs                 # Definisi parser argumen Cli & subcommands
-│       ├── helpers.rs             # Parser warna hex UTF-8 safe & utilitas pemformatan
-│       └── commands/              # Implementasi handler tiap subcommand CLI
-│           ├── info.rs            # Handler list, info, battery, dan udev-rule
-│           ├── sensor.rs          # Handler rate, lod, angle-snap, motion-sync, ripple, debounce, sleep
-│           ├── dpi.rs             # Handler dpi (query, active, set X/Y)
-│           ├── lighting.rs        # Handler led dan dongle-rgb
-│           ├── macros.rs          # Handler macro (flash, flash-all)
-│           ├── profile.rs         # Handler save, apply, dan reset
-│           └── hardware.rs        # Handler pair, long-range, dan flash firmware
-│   └── gui/                       # Layer Aplikasi Desktop (egui / eframe)
-│       ├── mod.rs                 # Inisialisasi window native, ikon aplikasi, & tema visual
-│       ├── state.rs               # State machine IcarusApp, throttling HID, & sinkronisasi profil
-│       ├── app.rs                 # Loop render utama eframe::App, shortcut global, & hot-plug poll
-│       ├── widgets.rs             # Komponen visual kustom (3D Mouse Visualizer, ColorBoard, dll.)
-│       └── tabs/                  # Implementasi UI tiap tab
-│           ├── buttons.rs         # UI Tab 1: Pemetaan Tombol & Debounce Click Tester
-│           ├── sensor.rs          # UI Tab 2: Stage DPI, Kurva Spektrum, & Tuning PAW3395
-│           ├── lighting.rs        # UI Tab 3: Efek RGB Mouse, ColorBoard, & Kontrol Dongle 4K
-│           ├── macros.rs          # UI Tab 4: Perekam Makro Live & Timeline Event Editor
-│           └── settings.rs        # UI Tab 5: Bahasa, Pairing 2.4G, Auto-Profile, & Firmware ISP
-└── tests/                         # Suite Pengujian Otomatis (51 Unit & Integration Tests)
-    ├── test_protocol.rs           # Pengujian paket 17-byte, checksum, opcode, & codec makro
-    ├── test_dpi.rs                # Pengujian kepresisian tabel PAW3395 & encoding 10-bit X/Y
-    ├── test_config.rs             # Pengujian serialisasi TOML, sanitasi, & Safety Lock
-    ├── test_daemon.rs             # Pengujian skema JSON Waybar, cache mtime, & state baterai
-    └── test_i18n.rs               # Pengujian kelengkapan string dwibahasa (EN/ID)
+│   ├── lib.rs                     # Library crate root & public API re-exports
+│   ├── main.rs                    # Binary entrypoint: CLI subcommand routing or GUI startup
+│   ├── dpi.rs                     # PixArt PAW3395 lookup tables & bijective 10-bit X/Y codec (const fn)
+│   ├── protocol/                  # Pure Binary HID Protocol Layer (No I/O)
+│   │   ├── mod.rs                 # Report ID (0x08), packet size (17 bytes), & OEM opcodes
+│   │   ├── addr.rs                # EEPROM register address constants (0x0000..0x0300+)
+│   │   ├── command.rs             # 38 Command packet constructors (const fn) & checksum logic
+│   │   ├── response.rs            # 17-byte Response parser + checksum & opcode verification
+│   │   ├── macro_codec.rs         # On-board EEPROM macro encoder/decoder & HID key mapping
+│   │   └── error.rs               # Structured domain error types (ProtocolError via thiserror)
+│   ├── config/                    # Configuration Domain Model & Validation Layer
+│   │   ├── mod.rs                 # Public configuration model re-exports
+│   │   ├── mouse.rs               # MouseConfig aggregate root, TOML serde, & validate()
+│   │   ├── dpi.rs                 # DpiStage model (independent X/Y, RGB color, enabled state)
+│   │   ├── sensor.rs              # PollingRate (125..1000Hz) & LiftOffDistance (1mm/2mm) enums
+│   │   ├── lighting.rs            # Color, LedMode, DpiLed, and DongleRgbConfig models
+│   │   ├── buttons.rs             # ButtonAction enum (Mouse, Keyboard, Media, Macro, FireKey)
+│   │   ├── macros.rs              # MacroItem, MacroEvent, MacroEventType, MacroRepeatMode
+│   │   └── rules.rs               # AutoProfileRule model for per-application profile switching
+│   ├── device/                    # Hardware Driver & Transport Layer (hidapi)
+│   │   ├── mod.rs                 # VID/PID constants, ConnectionType, BatteryStatus, IcarusDevice
+│   │   ├── discovery.rs           # USB/Wireless interface enumeration & connection opening
+│   │   ├── connection.rs          # Low-level HID send/query transport, verification & buffer drain
+│   │   ├── registers.rs           # Sensor, DPI, LED, 4K dongle, button, and sleep register I/O
+│   │   ├── macros.rs              # 384-byte chunked EEPROM macro slot flashing (0x0300 base)
+│   │   ├── firmware.rs            # ISP bootloader firmware update engine (.bin / .hex)
+│   │   └── composite.rs           # Full apply_config() and fail-fast read_config() orchestration
+│   ├── daemon/                    # Background Service & Linux Desktop Integration Layer
+│   │   ├── mod.rs                 # Daemon module exports
+│   │   ├── config.rs              # DaemonConfig builder (const fn)
+│   │   ├── service.rs             # Main daemon event loop, Ctrl+C handling, & auto-reconnect
+│   │   ├── scanner.rs             # Active window detection (Hyprland/Sway/X11/proc) & AutoProfileCache
+│   │   ├── notification.rs        # Low-battery & 100%-full desktop notifications via notify-send
+│   │   ├── export.rs              # Atomic Waybar/Polybar JSON battery export & config paths
+│   │   └── systemd.rs             # Systemd user service unit generator & installer
+│   ├── i18n/                      # Bilingual Localization Engine (English & Indonesian)
+│   │   ├── mod.rs                 # AppLanguage enum & metadata methods (const fn)
+│   │   ├── navigation.rs          # Header, tab labels, and global action button strings
+│   │   ├── status.rs              # Connection status, warnings, and toast notification strings
+│   │   ├── buttons.rs             # Tab 1 (Buttons & Debounce Tester) translations
+│   │   ├── sensor.rs              # Tab 2 (DPI Stages & PAW3395 Sensor) translations
+│   │   ├── lighting.rs            # Tab 3 (RGB Lighting & 4K Dongle) translations
+│   │   ├── macros.rs              # Tab 4 (Macro Recorder & Timeline Sequencer) translations
+│   │   └── settings.rs            # Tab 5 (Settings, 2.4G Pairing, & Auto-Profile) translations
+│   ├── cli/                       # Command-Line Interface Layer (Clap)
+│   │   ├── mod.rs                 # CLI entrypoint dispatcher (run_cli)
+│   │   ├── args.rs                # Clap derive structs & subcommands definition
+│   │   ├── helpers.rs             # UTF-8 safe hex color parser & CLI formatting utilities
+│   │   └── commands/              # Modular CLI subcommand handlers
+│   │       ├── mod.rs             # Command handler exports
+│   │       ├── info.rs            # list, info, and battery handlers
+│   │       ├── sensor.rs          # rate, lod, angle-snap, motion-sync, ripple, debounce, sleep
+│   │       ├── dpi.rs             # dpi (query, active, set X/Y) handlers
+│   │       ├── lighting.rs        # led and dongle-rgb handlers
+│   │       ├── macros.rs          # macro (flash, flash-all) handlers
+│   │       ├── config.rs          # save, apply, and reset profile handlers
+│   │       └── system.rs          # pair, long-range, flash firmware, and udev-rule handlers
+│   └── gui/                       # Immediate-Mode Desktop GUI Layer (egui / eframe)
+│       ├── mod.rs                 # Native window initialization, icon loader, & GUI startup
+│       ├── theme.rs               # Custom light/cyberpunk visual theme & typography styling
+│       ├── state.rs               # IcarusApp state machine, 120ms HID throttling, & profile sync
+│       ├── app.rs                 # eframe::App update loop, global shortcuts, & hot-plug polling
+│       ├── widgets.rs             # Custom 3D mouse visualizer, ColorBoard, & reusable widgets
+│       └── tabs/                  # Individual tab UI implementations
+│           ├── mod.rs             # Tab rendering exports
+│           ├── buttons.rs         # Tab 1: Button Remapping & Debounce Click Tester
+│           ├── sensor.rs          # Tab 2: DPI Stages, Spectrum Bar, & PAW3395 Calibration
+│           ├── lighting.rs        # Tab 3: Mouse RGB Effects, ColorBoard, & 4K Dongle Control
+│           ├── macros.rs          # Tab 4: Live Macro Recorder & Timeline Event Editor
+│           └── settings.rs        # Tab 5: Language, 2.4G Pairing, Auto-Profile, & ISP Flasher
+└── tests/                         # Automated Verification Suite (51 Unit & Integration Tests)
+    ├── test_protocol.rs           # 17-byte packet framing, checksums, opcodes, & macro codec
+    ├── test_dpi.rs                # PAW3395 lookup table accuracy & 10-bit X/Y roundtrips
+    ├── test_config.rs             # TOML serialization, validation clamping, & Safety Lock
+    ├── test_daemon.rs             # Waybar JSON schema, mtime cache, & battery notification state
+    └── test_i18n.rs               # Bilingual translation completeness & non-empty verification
 ```
 
 ---
 
-## 3. Alur Data & Interaksi Antar-Layer
+## 3. Data Flow & Runtime Execution Paths
 
-### A. Alur Eksekusi Perintah Perangkat Keras (HID Command Flow)
-Setiap perubahan pengaturan (baik dari CLI maupun GUI) melewati validasi ketat sebelum diubah menjadi frame HID 17-byte dan dikirim ke *endpoint* vendor (Interface 1, Report ID `0x08`):
+### A. Hardware Command & Verification Pipeline
+Every hardware configuration write (whether triggered from the CLI, GUI, or Daemon) passes through strict domain validation before being serialized into 17-byte HID packets and transmitted over **Interface 1 (Report ID `0x08`)**:
 
 ```mermaid
 sequenceDiagram
-    participant User as CLI / GUI / Daemon
+    participant Caller as CLI / GUI / Daemon
     participant Config as src/config/
     participant Device as src/device/
     participant Protocol as src/protocol/
     participant Hardware as Mouse / Dongle (HID)
 
-    User->>Config: MouseConfig::validate() & validate_buttons()
-    Config-->>User: Konfigurasi tervalidasi (Safety Lock OK)
-    User->>Device: apply_config(&config) / set_*()
-    Device->>Device: read_device_online() (Fail-fast jika wireless sleep)
+    Caller->>Config: MouseConfig::validate() & validate_buttons()
+    Config-->>Caller: Validated config (Left-Click Safety Lock verified)
+    Caller->>Device: apply_config(&config) / set_*()
+    Device->>Device: read_device_online() (Fail-fast if wireless mouse is asleep)
     Device->>Protocol: Command::write_*(...) [const fn]
-    Protocol-->>Device: Paket 17-Byte + Checksum (0x55 - sum)
+    Protocol-->>Device: 17-Byte Frame + Checksum (0x55 - sum)
     Device->>Hardware: hidapi::write (Report ID 0x08)
-    Hardware-->>Device: hidapi::read_timeout (Response 17-Byte)
+    Hardware-->>Device: hidapi::read_timeout (17-Byte Response)
     Device->>Protocol: Response::from_bytes_verified()
-    Protocol-->>Device: Checksum & Opcode Valid
+    Protocol-->>Device: Checksum & Opcode Verified
     Device->>Hardware: commit_config(profile_id) [Opcode 0x07, Addr 0x0000]
 ```
 
-### B. Alur Throttling Real-Time di GUI (`120ms` Slider Sync)
-Agar pergeseran slider kecerahan/warna RGB tidak membanjiri bus USB/2.4GHz (60+ paket/detik pada 60 FPS), `IcarusApp` menerapkan mekanisme *throttling* berbasis waktu:
-1. Saat slider digeser, UI memanggil `queue_lighting_sync()` atau `queue_dongle_sync()`.
-2. Pada `IcarusApp::update()`, `flush_pending_lighting_sync()` hanya mengirimkan paket HID jika interval minimal **`120ms`** telah berlalu sejak pengiriman terakhir, atau tepat ketika tombol mouse dilepas (`!pointer_down`).
+### B. Real-Time GUI Slider Throttling (`120ms` Interval)
+Dragging brightness, speed, or RGB color sliders in an immediate-mode GUI runs at 60+ FPS. Sending raw USB HID packets on every frame would saturate the 2.4GHz wireless transceiver queue:
+1. When a slider changes, the UI sets `pending_lighting_sync = true` via `queue_lighting_sync()` (or `queue_dongle_sync()`).
+2. Inside `IcarusApp::update()`, `flush_pending_lighting_sync()` dispatches the hardware write only when at least **`120ms`** (~8 Hz) has elapsed since the previous write, or immediately when the user releases the mouse button (`!pointer_down`).
 
-### C. Alur Deteksi Aplikasi & Auto-Profile pada Daemon
-Daemon latar belakang (`icarus-v2mini daemon`) dirancang agar sangat hemat CPU dan memori:
-1. **Caching Konfigurasi Berbasis `mtime` (`AutoProfileCache`)**: File `~/.config/icarus-v2mini/config.toml` hanya dibaca ulang dari disk jika *modification timestamp* (`mtime`) berubah.
-2. **Deteksi Kompositor Berpenjaga Environment**:
-   - Hanya menjalankan `hyprctl` jika `$HYPRLAND_INSTANCE_SIGNATURE` terdefinisi.
-   - Hanya menjalankan `swaymsg` jika `$SWAYSOCK` terdefinisi (mendukung `nodes` dan `floating_nodes` secara rekursif).
-   - Hanya menjalankan `xprop` jika `$DISPLAY` terdefinisi.
-   - *Fallback* ke pemindaian `/proc/<pid>/comm` menggunakan buffer stack `[u8; 64]` tanpa alokasi heap (`String`) per proses.
+### C. Low-Overhead Background Daemon & Auto-Profile Engine
+The background daemon (`icarus-v2mini daemon`) is engineered for near-zero idle CPU and memory footprint:
+1. **`mtime`-Backed Configuration Cache (`AutoProfileCache`)**: `~/.config/icarus-v2mini/config.toml` is only re-read and parsed when its filesystem modification timestamp (`mtime`) changes.
+2. **Environment-Guarded Window Inspection**:
+   - Invokes `hyprctl` only when `$HYPRLAND_INSTANCE_SIGNATURE` is present.
+   - Invokes `swaymsg` only when `$SWAYSOCK` is present (traversing both tiled `nodes` and `floating_nodes` recursively).
+   - Invokes `xprop` only when `$DISPLAY` is present.
+   - Falls back to scanning `/proc/<pid>/comm` into a **64-byte stack buffer (`[u8; 64]`)** with zero heap allocations per process.
 
 ---
 
-## 4. Prinsip Rekayasa & Kualitas Kode (Engineering Principles)
+## 4. Core Engineering Principles
 
-1. **Keamanan Memori Mutlak (`unsafe_code = "forbid"`)**:
-   Tidak ada satu baris pun blok `unsafe` di dalam repositori ini. Seluruh manipulasi byte menggunakan *slice pattern matching*, iterator, dan fungsi konversi endianness bawaan pustaka standar (`u16::from_le_bytes`, `to_be_bytes`).
-2. **Evaluasi Waktu Kompilasi (`const fn` & `#[must_use]`)**:
-   Seluruh fungsi kalkulasi DPI di `src/dpi.rs` dan seluruh 38 konstruktor paket di `src/protocol/command.rs` dideklarasikan sebagai `#[must_use] pub const fn`, memungkinkan kompilator Rust mengevaluasi konstanta protokol pada saat kompilasi tanpa biaya runtime.
-3. **Bebas Alokasi yang Tidak Perlu (Zero-Allocation Hot Paths)**:
-   - Pemetaan kode HID ke nama tombol (`hid_usage_to_key_name`) mengembalikan `Cow<'static, str>` sehingga 99% tombol standar mengembalikan referensi string statis (`&'static str`) tanpa alokasi heap.
-   - Pencocokan pola aplikasi di daemon menggunakan `contains_ignore_ascii_case` berbasis *byte slice windows* (`&[u8]`), bukan `.to_lowercase()` yang mengalokasikan `String` baru.
-4. **Penanganan Error Berlapis (`thiserror` vs `anyhow`)**:
-   - Layer protokol dan driver menggunakan enum error terstruktur `ProtocolError` (`#[derive(thiserror::Error)]`) sehingga pemanggil dapat melakukan *pattern matching* spesifik (misalnya membedakan `ProtocolError::Timeout` saat mouse *sleep* vs `ProtocolError::Hid` saat dongle dicabut).
-   - Layer aplikasi terluar (`src/main.rs` dan `src/cli/`) menggunakan `anyhow::Result` dengan `.context(...)` yang informatif bagi pengguna akhir.
-5. **Penulisan File Atomik (Atomic File Persistence)**:
-   Ekspor telemetri baterai (`~/.cache/icarus-v2mini/battery.json`) ditulis ke file sementara (`battery.json.tmp`) terlebih dahulu lalu diganti secara atomik menggunakan `std::fs::rename`, mencegah Waybar/Polybar membaca file JSON yang terpotong (*partial write*).
+1. **Memory Safety without Compromise (`unsafe_code = "forbid"`)**:
+   No `unsafe` blocks exist anywhere in the workspace. Binary parsing, UTF-8 string truncation, and EEPROM buffer serialization rely exclusively on safe slice patterns, iterators, and checked endianness conversions.
+2. **Compile-Time Evaluation (`const fn` & `#[must_use]`)**:
+   All pure DPI calculations in `src/dpi.rs` and all 38 packet constructors in `src/protocol/command.rs` are marked `#[must_use] pub const fn`, allowing compile-time evaluation and preventing ignored return values.
+3. **Zero-Allocation Hot Paths**:
+   - `hid_usage_to_key_name` returns `Cow<'static, str>`, returning borrowed static string slices (`&'static str`) for all standard keyboard and mouse keys.
+   - Substring matching in the daemon uses a zero-allocation `contains_ignore_ascii_case` byte-window comparator (`&[u8]`) instead of heap-allocating `.to_lowercase()` strings.
+4. **Layered Error Handling (`thiserror` vs `anyhow`)**:
+   - Low-level protocol and transport layers return structured `ProtocolError` variants (`#[derive(thiserror::Error)]`) so callers can distinguish between `ProtocolError::Timeout` (sleeping wireless mouse) and `ProtocolError::Hid` (unplugged USB device).
+   - Application boundaries (`src/main.rs` and `src/cli/`) use `anyhow::Result` with descriptive `.context(...)` messages.
+5. **Atomic File Persistence**:
+   Battery telemetry exports (`~/.cache/icarus-v2mini/battery.json`) write to a temporary file (`battery.json.tmp`) before executing an atomic POSIX `std::fs::rename`, guaranteeing that status bars like Waybar never read partially written JSON.
